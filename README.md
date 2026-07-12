@@ -1,2 +1,7 @@
 # mth5-panel
-Panel application to build and view MTH5 files
+
+Includes `panel` applications for building and viewing a MTH5 file.
+
+## Installation
+
+
