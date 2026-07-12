@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mth5-panel"
+version = "0.0.1"
+authors = [
+    { name = "MTH5 development team", email = "jpeacock@usgs.gov" },
+]
+description = ""
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "bokeh",
+    "cytoolz",
+    "datashader",
+    "holoviews",
+    "hvplot",
+    "h5py",
+    "loguru",
+    "numpy",
+    "pandas",
+    "panel",
+    "pathlib",
+    "param",
+    "pendulum",
+    "polars",
+    "psutil",
+    "toolz",
+    "mth5",
+    "mt_metadata",
+]
+
+[project.optional-dependencies]
+all = []
+
+[tool.setuptools.packages.find]
+where = ["."]
