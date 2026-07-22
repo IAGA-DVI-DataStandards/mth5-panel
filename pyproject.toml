@@ -34,6 +34,9 @@ dependencies = [
 
 [project.optional-dependencies]
 all = []
+test = [
+    "pytest>=8",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
