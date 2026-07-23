@@ -8,7 +8,9 @@ Run with:
 
 from __future__ import annotations
 
+import io
 import json
+from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -323,43 +325,51 @@ class MakeMTH5PanelApp(param.Parameterized):
         self.status = f"Set {parameter_name} to: {value}"
         self._set_browser_action_state(action_key, success=True)
 
+    def _clear_browser_selection(self):
+        self._browser.value = []
+
     def _run_browser_action(self, action_key: str, _event=None):
-        if action_key == "set_save_path":
-            self._set_path_parameter_from_selection(
-                "save_path", action_key, require_directory=True
-            )
-        elif action_key == "set_data_path":
-            self._set_path_parameter_from_selection(
-                "data_path", action_key, require_directory=True
-            )
-        elif action_key == "set_request_csv":
-            self._set_path_parameter_from_selection("request_csv", action_key)
-        elif action_key == "set_station_xml":
-            self._set_path_parameter_from_selection("station_xml_path", action_key)
-        elif action_key == "set_calibration_path":
-            self._set_path_parameter_from_selection("calibration_path", action_key)
-        elif action_key == "set_receiver_calibration_path":
-            self._set_path_parameter_from_selection(
-                "receiver_calibration_path", action_key
-            )
-        elif action_key == "set_sensor_calibration_path":
-            self._set_path_parameter_from_selection(
-                "sensor_calibration_path", action_key
-            )
-        elif action_key == "add_miniseed":
-            if not self._browser.value:
-                self.status = "No selections made in file browser."
-                self._set_browser_action_state(action_key, success=False)
-                return
+        try:
+            if action_key == "set_save_path":
+                self._set_path_parameter_from_selection(
+                    "save_path", action_key, require_directory=True
+                )
+            elif action_key == "set_data_path":
+                self._set_path_parameter_from_selection(
+                    "data_path", action_key, require_directory=True
+                )
+            elif action_key == "set_request_csv":
+                self._set_path_parameter_from_selection("request_csv", action_key)
+            elif action_key == "set_station_xml":
+                self._set_path_parameter_from_selection("station_xml_path", action_key)
+            elif action_key == "set_calibration_path":
+                self._set_path_parameter_from_selection("calibration_path", action_key)
+            elif action_key == "set_receiver_calibration_path":
+                self._set_path_parameter_from_selection(
+                    "receiver_calibration_path", action_key
+                )
+            elif action_key == "set_sensor_calibration_path":
+                self._set_path_parameter_from_selection(
+                    "sensor_calibration_path", action_key
+                )
+            elif action_key == "add_miniseed":
+                if not self._browser.value:
+                    self.status = "No selections made in file browser."
+                    self._set_browser_action_state(action_key, success=False)
+                    return
 
-            existing = [item for item in self._split_paths(self.miniseed_files) if item]
-            for item in self._browser.value:
-                if item not in existing:
-                    existing.append(item)
+                existing = [
+                    item for item in self._split_paths(self.miniseed_files) if item
+                ]
+                for item in self._browser.value:
+                    if item not in existing:
+                        existing.append(item)
 
-            self.miniseed_files = "\n".join(existing)
-            self.status = f"Added {len(self._browser.value)} miniSEED path(s)."
-            self._set_browser_action_state(action_key, success=True)
+                self.miniseed_files = "\n".join(existing)
+                self.status = f"Added {len(self._browser.value)} miniSEED path(s)."
+                self._set_browser_action_state(action_key, success=True)
+        finally:
+            self._clear_browser_selection()
 
     def _update_browser_actions(self):
         action_keys = self._BROWSER_ACTIONS_BY_CLIENT.get(self.client_type, [])
@@ -472,212 +482,222 @@ class MakeMTH5PanelApp(param.Parameterized):
         return pd.read_csv(request_path)
 
     def _run_create(self):
+        stdout_buffer = io.StringIO()
         try:
-            common = self._common_kwargs()
-            extras = self._extra_kwargs()
+            with redirect_stdout(stdout_buffer):
+                common = self._common_kwargs()
+                extras = self._extra_kwargs()
 
-            if self.client_type == "FDSN Client":
-                request_df = self._load_request_csv()
-                result = MakeMTH5.from_fdsn_client(
-                    request_df,
-                    client=self.fdsn_client,
-                    save_path=self._safe_path(self.save_path),
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    **common,
-                    **extras,
-                )
-
-            elif self.client_type == "FDSN StationXML + miniSEED":
-                station_xml = self._safe_path(self.station_xml_path)
-                miniseed = self._split_paths(self.miniseed_files)
-                if station_xml is None:
-                    raise ValueError("station_xml_path is required.")
-                if not miniseed:
-                    raise ValueError("At least one miniSEED file is required.")
-                result = MakeMTH5.from_fdsn_miniseed_and_stationxml(
-                    station_xml,
-                    miniseed,
-                    save_path=self._safe_path(self.save_path),
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    **common,
-                    **extras,
-                )
-
-            elif self.client_type == "USGS Geomag":
-                request_df = self._load_request_csv()
-                result = MakeMTH5.from_usgs_geomag(
-                    request_df,
-                    save_path=self._safe_path(self.save_path),
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    **common,
-                    **extras,
-                )
-
-            elif self.client_type == "INTERMAG":
-                request_df = self._load_request_csv()
-                result = MakeMTH5.from_intermag(
-                    request_df,
-                    save_path=self._safe_path(self.save_path),
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    **common,
-                    **extras,
-                )
-
-            elif self.client_type == "Zen":
-                sample_rates = self._parse_sample_rates()
-                data_path = self._safe_path(self.data_path)
-                if data_path is None:
-                    raise ValueError("data_path is required.")
-                result = MakeMTH5.from_zen(
-                    data_path,
-                    sample_rates=sample_rates or [4096, 1024, 256],
-                    calibration_path=self._safe_path(self.calibration_path),
-                    survey_id=self._safe_path(self.survey_id),
-                    combine=self.combine,
-                    save_path=self._safe_path(self.save_path),
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    **common,
-                    **extras,
-                )
-
-            elif self.client_type == "Phoenix":
-                sample_rates = self._parse_sample_rates()
-                data_path = self._safe_path(self.data_path)
-                if data_path is None:
-                    raise ValueError("data_path is required.")
-                result = MakeMTH5.from_phoenix(
-                    data_path,
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    save_path=self._safe_path(self.save_path),
-                    sample_rates=sample_rates or [150, 24000],
-                    receiver_calibration_dict=self._safe_path(
-                        self.receiver_calibration_path
-                    ),
-                    sensor_calibration_dict=self._safe_path(
-                        self.sensor_calibration_path
-                    ),
-                    **common,
-                    **extras,
-                )
-
-            elif self.client_type == "LEMI":
-                sample_rates = self._parse_sample_rates()
-                data_path = self._safe_path(self.data_path)
-                survey_id = self._safe_path(self.survey_id)
-                station_id = self._safe_path(self.station_id)
-                if data_path is None or survey_id is None or station_id is None:
-                    raise ValueError(
-                        "data_path, survey_id, and station_id are required."
+                if self.client_type == "FDSN Client":
+                    request_df = self._load_request_csv()
+                    result = MakeMTH5.from_fdsn_client(
+                        request_df,
+                        client=self.fdsn_client,
+                        save_path=self._safe_path(self.save_path),
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        **common,
+                        **extras,
                     )
-                result = MakeMTH5.from_lemi(
-                    data_path,
-                    survey_id,
-                    station_id,
-                    sample_rates=sample_rates or None,
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    save_path=self._safe_path(self.save_path),
-                    **common,
-                    **extras,
-                )
 
-            elif self.client_type == "LEMI-424":
-                sample_rates = self._parse_sample_rates()
-                data_path = self._safe_path(self.data_path)
-                survey_id = self._safe_path(self.survey_id)
-                station_id = self._safe_path(self.station_id)
-                if data_path is None or survey_id is None or station_id is None:
-                    raise ValueError(
-                        "data_path, survey_id, and station_id are required."
+                elif self.client_type == "FDSN StationXML + miniSEED":
+                    station_xml = self._safe_path(self.station_xml_path)
+                    miniseed = self._split_paths(self.miniseed_files)
+                    if station_xml is None:
+                        raise ValueError("station_xml_path is required.")
+                    if not miniseed:
+                        raise ValueError("At least one miniSEED file is required.")
+                    result = MakeMTH5.from_fdsn_miniseed_and_stationxml(
+                        station_xml,
+                        miniseed,
+                        save_path=self._safe_path(self.save_path),
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        **common,
+                        **extras,
                     )
-                result = MakeMTH5.from_lemi424(
-                    data_path,
-                    survey_id,
-                    station_id,
-                    sample_rates=sample_rates or None,
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    save_path=self._safe_path(self.save_path),
-                    **common,
-                    **extras,
-                )
 
-            elif self.client_type == "LEMI-417":
-                data_path = self._safe_path(self.data_path)
-                survey_id = self._safe_path(self.survey_id)
-                station_id = self._safe_path(self.station_id)
-                if data_path is None or survey_id is None or station_id is None:
-                    raise ValueError(
-                        "data_path, survey_id, and station_id are required."
+                elif self.client_type == "USGS Geomag":
+                    request_df = self._load_request_csv()
+                    result = MakeMTH5.from_usgs_geomag(
+                        request_df,
+                        save_path=self._safe_path(self.save_path),
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        **common,
+                        **extras,
                     )
-                result = MakeMTH5.from_lemi417(
-                    data_path,
-                    survey_id,
-                    station_id,
-                    mth5_filename=self._safe_path(self.mth5_filename)
-                    or "from_lemi417.h5",
-                    save_path=self._safe_path(self.save_path) or str(Path.cwd()),
-                    **common,
-                    **extras,
-                )
 
-            elif self.client_type == "Metronix":
-                sample_rates = self._parse_sample_rates()
-                data_path = self._safe_path(self.data_path)
-                if data_path is None:
-                    raise ValueError("data_path is required.")
-                result = MakeMTH5.from_metronix(
-                    data_path,
-                    sample_rates=sample_rates or [128],
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    save_path=self._safe_path(self.save_path),
-                    run_name_zeros=self.run_name_zeros,
-                    **common,
-                    **extras,
-                )
-
-            elif self.client_type == "NIMS":
-                sample_rates = self._parse_sample_rates()
-                data_path = self._safe_path(self.data_path)
-                if data_path is None:
-                    raise ValueError("data_path is required.")
-                result = MakeMTH5.from_nims(
-                    data_path,
-                    sample_rates=sample_rates or [4096, 1024, 256],
-                    save_path=self._safe_path(self.save_path),
-                    calibration_path=self._safe_path(self.calibration_path),
-                    survey_id=self._safe_path(self.survey_id),
-                    combine=self.combine,
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    **common,
-                    **extras,
-                )
-
-            elif self.client_type == "UoA":
-                data_path = self._safe_path(self.data_path)
-                survey_id = self._safe_path(self.survey_id)
-                station_id = self._safe_path(self.station_id)
-                if data_path is None or survey_id is None or station_id is None:
-                    raise ValueError(
-                        "data_path, survey_id, and station_id are required."
+                elif self.client_type == "INTERMAG":
+                    request_df = self._load_request_csv()
+                    result = MakeMTH5.from_intermag(
+                        request_df,
+                        save_path=self._safe_path(self.save_path),
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        **common,
+                        **extras,
                     )
-                result = MakeMTH5.from_uoa(
-                    data_path,
-                    survey_id,
-                    station_id,
-                    instrument_type=self.instrument_type,
-                    run_id=self.run_id,
-                    mth5_filename=self._safe_path(self.mth5_filename),
-                    save_path=self._safe_path(self.save_path),
-                    **common,
-                    **extras,
-                )
 
-            else:
-                raise ValueError(f"Unsupported client_type: {self.client_type}")
+                elif self.client_type == "Zen":
+                    sample_rates = self._parse_sample_rates()
+                    data_path = self._safe_path(self.data_path)
+                    if data_path is None:
+                        raise ValueError("data_path is required.")
+                    result = MakeMTH5.from_zen(
+                        data_path,
+                        sample_rates=sample_rates or [4096, 1024, 256],
+                        calibration_path=self._safe_path(self.calibration_path),
+                        survey_id=self._safe_path(self.survey_id),
+                        combine=self.combine,
+                        save_path=self._safe_path(self.save_path),
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        **common,
+                        **extras,
+                    )
 
-            self.status = f"Created MTH5 successfully: {result}"
+                elif self.client_type == "Phoenix":
+                    sample_rates = self._parse_sample_rates()
+                    data_path = self._safe_path(self.data_path)
+                    if data_path is None:
+                        raise ValueError("data_path is required.")
+                    result = MakeMTH5.from_phoenix(
+                        data_path,
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        save_path=self._safe_path(self.save_path),
+                        sample_rates=sample_rates or [150, 24000],
+                        receiver_calibration_dict=self._safe_path(
+                            self.receiver_calibration_path
+                        ),
+                        sensor_calibration_dict=self._safe_path(
+                            self.sensor_calibration_path
+                        ),
+                        **common,
+                        **extras,
+                    )
+
+                elif self.client_type == "LEMI":
+                    sample_rates = self._parse_sample_rates()
+                    data_path = self._safe_path(self.data_path)
+                    survey_id = self._safe_path(self.survey_id)
+                    station_id = self._safe_path(self.station_id)
+                    if data_path is None or survey_id is None or station_id is None:
+                        raise ValueError(
+                            "data_path, survey_id, and station_id are required."
+                        )
+                    result = MakeMTH5.from_lemi(
+                        data_path,
+                        survey_id,
+                        station_id,
+                        sample_rates=sample_rates or None,
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        save_path=self._safe_path(self.save_path),
+                        **common,
+                        **extras,
+                    )
+
+                elif self.client_type == "LEMI-424":
+                    sample_rates = self._parse_sample_rates()
+                    data_path = self._safe_path(self.data_path)
+                    survey_id = self._safe_path(self.survey_id)
+                    station_id = self._safe_path(self.station_id)
+                    if data_path is None or survey_id is None or station_id is None:
+                        raise ValueError(
+                            "data_path, survey_id, and station_id are required."
+                        )
+                    result = MakeMTH5.from_lemi424(
+                        data_path,
+                        survey_id,
+                        station_id,
+                        sample_rates=sample_rates or None,
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        save_path=self._safe_path(self.save_path),
+                        **common,
+                        **extras,
+                    )
+
+                elif self.client_type == "LEMI-417":
+                    data_path = self._safe_path(self.data_path)
+                    survey_id = self._safe_path(self.survey_id)
+                    station_id = self._safe_path(self.station_id)
+                    if data_path is None or survey_id is None or station_id is None:
+                        raise ValueError(
+                            "data_path, survey_id, and station_id are required."
+                        )
+                    result = MakeMTH5.from_lemi417(
+                        data_path,
+                        survey_id,
+                        station_id,
+                        mth5_filename=self._safe_path(self.mth5_filename)
+                        or "from_lemi417.h5",
+                        save_path=self._safe_path(self.save_path) or str(Path.cwd()),
+                        **common,
+                        **extras,
+                    )
+
+                elif self.client_type == "Metronix":
+                    sample_rates = self._parse_sample_rates()
+                    data_path = self._safe_path(self.data_path)
+                    if data_path is None:
+                        raise ValueError("data_path is required.")
+                    result = MakeMTH5.from_metronix(
+                        data_path,
+                        sample_rates=sample_rates or [128],
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        save_path=self._safe_path(self.save_path),
+                        run_name_zeros=self.run_name_zeros,
+                        **common,
+                        **extras,
+                    )
+
+                elif self.client_type == "NIMS":
+                    sample_rates = self._parse_sample_rates()
+                    data_path = self._safe_path(self.data_path)
+                    if data_path is None:
+                        raise ValueError("data_path is required.")
+                    result = MakeMTH5.from_nims(
+                        data_path,
+                        sample_rates=sample_rates or [4096, 1024, 256],
+                        save_path=self._safe_path(self.save_path),
+                        calibration_path=self._safe_path(self.calibration_path),
+                        survey_id=self._safe_path(self.survey_id),
+                        combine=self.combine,
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        **common,
+                        **extras,
+                    )
+
+                elif self.client_type == "UoA":
+                    data_path = self._safe_path(self.data_path)
+                    survey_id = self._safe_path(self.survey_id)
+                    station_id = self._safe_path(self.station_id)
+                    if data_path is None or survey_id is None or station_id is None:
+                        raise ValueError(
+                            "data_path, survey_id, and station_id are required."
+                        )
+                    result = MakeMTH5.from_uoa(
+                        data_path,
+                        survey_id,
+                        station_id,
+                        instrument_type=self.instrument_type,
+                        run_id=self.run_id,
+                        mth5_filename=self._safe_path(self.mth5_filename),
+                        save_path=self._safe_path(self.save_path),
+                        **common,
+                        **extras,
+                    )
+
+                else:
+                    raise ValueError(f"Unsupported client_type: {self.client_type}")
+
+            status_lines = [f"Created MTH5 successfully: {result}"]
+            stdout_text = stdout_buffer.getvalue().strip()
+            if stdout_text:
+                status_lines.extend(["", "Stdout:", stdout_text])
+            self.status = "\n".join(status_lines)
 
         except Exception as error:  # pragma: no cover - UI path with broad user inputs
-            self.status = f"Error: {error}"
+            status_lines = [f"Error: {error}"]
+            stdout_text = stdout_buffer.getvalue().strip()
+            if stdout_text:
+                status_lines.extend(["", "Stdout:", stdout_text])
+            self.status = "\n".join(status_lines)
 
     @pn.depends("client_type")
     def client_help(self):
@@ -739,10 +759,13 @@ class MakeMTH5PanelApp(param.Parameterized):
         browser_tools = pn.Column(
             "### File Browser",
             (
-                "### Use the file browser below to select files or directories depending on "
-                "what is required. Then click the "
-                "appropriate button to set the selected path for data, save location, request CSV,"
-                " StationXML, or miniSEED files."
+                "Use the file browser below to select files or directories depending on "
+                "what is required which are the red buttons below. The selected files/directories "
+                "will be used to populate the corresponding fields in the form below.  Once you "
+                "have selected the appropriate files/directories, click the red buttons to set the "
+                "values. The buttons will turn green when the values are set correctly and the "
+                "selection will be cleared.  You can also manually enter the paths in the form "
+                "below if you prefer."
             ),
             self._browser,
             self._browser_actions_panel,
@@ -770,10 +793,16 @@ class MakeMTH5PanelApp(param.Parameterized):
                 "mth5_file_mode",
                 # "interact",
                 "extra_kwargs_json",
-                "run",
             ],
             show_name=False,
             widgets={"extra_kwargs_json": pn.widgets.TextAreaInput},
+        )
+
+        run_button = pn.widgets.Button.from_param(
+            self.param.run,
+            name="Create MTH5",
+            button_type="primary",
+            sizing_mode="stretch_width",
         )
 
         return pn.Column(
@@ -795,6 +824,7 @@ class MakeMTH5PanelApp(param.Parameterized):
             ),
             pn.pane.Markdown("### Status"),
             pn.bind(lambda message: pn.pane.Str(message), self.param.status),
+            run_button,
         )
 
 
