@@ -19,7 +19,9 @@ from mth5.clients.make_mth5 import MakeMTH5
 
 try:
     import panel as pn
-except ImportError as error:  # pragma: no cover - only raised in missing optional dep envs
+except (
+    ImportError
+) as error:  # pragma: no cover - only raised in missing optional dep envs
     raise ImportError(
         "panel and param are required for the MakeMTH5 panel app. "
         "Install with `pip install panel param`."
@@ -59,9 +61,17 @@ class MakeMTH5PanelApp(param.Parameterized):
     save_path = param.String(default=str(Path.cwd()), doc="Output directory path.")
     mth5_filename = param.String(default="from_client.h5", doc="Output MTH5 filename.")
 
-    mth5_version = param.Selector(default="0.2.0", objects=["0.2.0", "0.1.0"])
-    mth5_file_mode = param.Selector(default="w", objects=["w", "a"])
-    interact = param.Boolean(default=False)
+    mth5_version = param.Selector(
+        default="0.2.0",
+        objects=["0.2.0", "0.1.0"],
+        doc="MTH5 version to use for output file. 0.1.0 is the legacy version, 0.2.0 is the current version.",
+    )
+    mth5_file_mode = param.Selector(
+        default="w",
+        objects=["w", "a", "r+"],
+        doc="File mode for MTH5 output file. 'w' for write (overwrite), 'a' for append, 'r+' for read/write.",
+    )
+    # interact = param.Boolean(default=False)
 
     h5_compression = param.Selector(
         default="gzip", objects=["gzip", "lzf", "szip", "none"]
@@ -69,9 +79,11 @@ class MakeMTH5PanelApp(param.Parameterized):
     h5_compression_opts = param.Integer(default=4, bounds=(0, 9))
     h5_shuffle = param.Boolean(default=True)
     h5_fletcher32 = param.Boolean(default=True)
-    h5_data_level = param.Integer(default=1, bounds=(0, 5))
+    h5_data_level = param.Selector(default=1, objects=[0, 1, 2, 3, 4, 5])
 
-    request_csv = param.String(default="", doc="Path to request CSV for FDSN/Geomag/INTERMAG.")
+    request_csv = param.String(
+        default="", doc="Path to request CSV for FDSN/Geomag/INTERMAG."
+    )
     station_xml_path = param.String(default="", doc="Path to StationXML file.")
     miniseed_files = param.String(
         default="", doc="miniSEED file paths (comma or newline separated)."
@@ -92,7 +104,7 @@ class MakeMTH5PanelApp(param.Parameterized):
     instrument_type = param.Selector(default="pr624", objects=["pr624", "orange"])
     extra_kwargs_json = param.String(
         default="{}",
-        doc="Extra kwargs as JSON. Example: {\"sample_rate\": 10.0, \"dipole_length_ex\": 50.0}",
+        doc='Extra kwargs as JSON. Example: {"sample_rate": 10.0, "dipole_length_ex": 50.0}',
     )
 
     status = param.String(default="Ready")
@@ -115,87 +127,299 @@ class MakeMTH5PanelApp(param.Parameterized):
     }
 
     _FILE_TYPE_HELP = {
-        "FDSN Client": "Request CSV with columns: network, station, location, channel, start, end.",
-        "FDSN StationXML + miniSEED": "StationXML file and one or more miniSEED files.",
-        "USGS Geomag": "Request CSV with geomag columns: observatory, type, elements, sampling_period, start, end.",
-        "INTERMAG": "Request CSV with INTERMAG request columns.",
-        "Zen": "Directory containing Z3D files and optional amtant.cal calibration file.",
-        "Phoenix": "Directory containing Phoenix station folders/files and optional rxcal/scal calibration directories.",
-        "LEMI": "Directory containing LEMI files (.txt or .B423).",
-        "LEMI-424": "Directory containing LEMI-424 files (.txt).",
-        "LEMI-417": "Directory containing LEMI-417 files.",
-        "Metronix": "Survey or station directory containing Metronix ATSS + JSON structure.",
-        "NIMS": "Directory containing NIMS .BIN files and optional calibration file.",
-        "UoA": "Directory or file for UoA PR6-24 or Orange Box data.",
+        "FDSN Client": (
+            "Input a request CSV with columns: network, station, location, "
+            "channel, start, end. Be sure to look up the correct "
+            "network/station/location/channel codes for your data source. "
+            "see https://www.fdsn.org/webservices/FDSN-WS-Specifications-1.1.pdf "
+            "for details, and https://service.iris.edu/fdsnws/availability/1/ "
+            "for a list of available networks and stations."
+        ),
+        "FDSN StationXML + miniSEED": (
+            "Identify the StationXML file and one or more " "miniSEED files."
+        ),
+        "USGS Geomag": (
+            "Input a request CSV with geomag columns: observatory, type, "
+            "elements, sampling_period, start, end. Times should be in UTC. See "
+            "https://www.usgs.gov/observatories/geomag-network/geomag-data-access"
+        ),
+        "INTERMAG": (
+            "Input a request CSV with geomag columns: observatory, type, "
+            "elements, sampling_period, start, end. Times should be in UTC. See "
+            "https://www.intermagnet.org for more details."
+        ),
+        "Zen": (
+            "Provide the directory containing Z3D files and optional calibration "
+            "file, usually amtant.cal."
+        ),
+        "Phoenix": (
+            "Provide the directory containing Phoenix station folders/files and "
+            "optional rxcal/scal calibration directories. "
+            "Be sure the rxcal and scal have been converted to JSON format using "
+            "the `phoenix_calibration_to_json` utility."
+        ),
+        "LEMI": ("Provide the directory containing LEMI files (.txt or .B423)."),
+        "LEMI-424": ("Provide the directory containing LEMI-424 files (.txt)."),
+        "LEMI-417": ("Provide the directory containing LEMI-417 files."),
+        "Metronix": (
+            "Survey or station directory containing Metronix ATSS + JSON structure."
+        ),
+        "NIMS": (
+            "Provide the directory containing NIMS .BIN files and optional calibration file."
+        ),
+        "UoA": ("Provide the directory or file for UoA PR6-24 or Orange Box data."),
+    }
+
+    _BROWSER_ACTIONS_BY_CLIENT = {
+        "FDSN Client": ["set_save_path", "set_request_csv"],
+        "FDSN StationXML + miniSEED": [
+            "set_save_path",
+            "set_station_xml",
+            "add_miniseed",
+        ],
+        "USGS Geomag": ["set_save_path", "set_request_csv"],
+        "INTERMAG": ["set_save_path", "set_request_csv"],
+        "Zen": ["set_save_path", "set_data_path", "set_calibration_path"],
+        "Phoenix": [
+            "set_save_path",
+            "set_data_path",
+            "set_receiver_calibration_path",
+            "set_sensor_calibration_path",
+        ],
+        "LEMI": ["set_save_path", "set_data_path"],
+        "LEMI-424": ["set_save_path", "set_data_path"],
+        "LEMI-417": ["set_save_path", "set_data_path"],
+        "Metronix": ["set_save_path", "set_data_path"],
+        "NIMS": ["set_save_path", "set_data_path", "set_calibration_path"],
+        "UoA": ["set_save_path", "set_data_path"],
+    }
+
+    _BROWSER_ACTION_LABELS = {
+        "set_save_path": "Use Selected as Save Path",
+        "set_data_path": "Use Selected as Data Path",
+        "set_request_csv": "Use Selected as Request CSV",
+        "set_station_xml": "Use Selected as StationXML",
+        "add_miniseed": "Add Selected to miniSEED List",
+        "set_calibration_path": "Use Selected as Calibration Path",
+        "set_receiver_calibration_path": "Use Selected as Rx Cal Path",
+        "set_sensor_calibration_path": "Use Selected as Sensor Cal Path",
+    }
+
+    _BROWSER_PARAM_TO_ACTION = {
+        "save_path": "set_save_path",
+        "data_path": "set_data_path",
+        "request_csv": "set_request_csv",
+        "station_xml_path": "set_station_xml",
+        "calibration_path": "set_calibration_path",
+        "receiver_calibration_path": "set_receiver_calibration_path",
+        "sensor_calibration_path": "set_sensor_calibration_path",
+        "miniseed_files": "add_miniseed",
     }
 
     def __init__(self, **params: Any):
         super().__init__(**params)
 
-        self._browser = pn.widgets.FileSelector(str(Path.cwd()))
-        self._set_data_button = pn.widgets.Button(name="Use Selected as Data Path")
-        self._set_save_button = pn.widgets.Button(name="Use Selected as Save Path")
-        self._set_request_button = pn.widgets.Button(name="Use Selected as Request CSV")
-        self._set_stationxml_button = pn.widgets.Button(name="Use Selected as StationXML")
-        self._set_miniseed_button = pn.widgets.Button(name="Add Selected to miniSEED List")
+        self._browser = pn.widgets.FileSelector(
+            name="Select Files or Directories",
+            directory="~",
+            file_pattern="*",
+            sizing_mode="stretch_width",
+        )
+        self._browser_actions_panel = pn.GridBox(
+            ncols=2,
+            sizing_mode="stretch_width",
+        )
+        self._browser_action_buttons: dict[str, pn.widgets.Button] = {}
 
-        self._set_data_button.on_click(self._set_data_from_selection)
-        self._set_save_button.on_click(self._set_save_from_selection)
-        self._set_request_button.on_click(self._set_request_from_selection)
-        self._set_stationxml_button.on_click(self._set_stationxml_from_selection)
-        self._set_miniseed_button.on_click(self._append_miniseed_from_selection)
+        self._browser.param.watch(self._on_browser_selection_changed, "value")
+
+        self._h5_compression_menu = pn.widgets.MenuButton(
+            name=f"Comp: {self.h5_compression}",
+            items=[(item, item) for item in self.param.h5_compression.objects],
+            button_type="light",
+            width=170,
+        )
+        self._h5_compression_opts_menu = pn.widgets.MenuButton(
+            name=f"Opts: {self.h5_compression_opts}",
+            items=[(str(item), str(item)) for item in range(10)],
+            button_type="light",
+            width=170,
+        )
+        self._h5_shuffle_menu = pn.widgets.MenuButton(
+            name=f"Shuffle: {self.h5_shuffle}",
+            items=[("True", "True"), ("False", "False")],
+            button_type="light",
+            width=170,
+        )
+        self._h5_fletcher32_menu = pn.widgets.MenuButton(
+            name=f"F32: {self.h5_fletcher32}",
+            items=[("True", "True"), ("False", "False")],
+            button_type="light",
+            width=170,
+        )
+        self._h5_data_level_menu = pn.widgets.MenuButton(
+            name=f"Level: {self.h5_data_level}",
+            items=[(str(item), str(item)) for item in self.param.h5_data_level.objects],
+            button_type="light",
+            width=170,
+        )
+
+        self._h5_compression_menu.param.watch(
+            self._on_h5_compression_selected, "clicked"
+        )
+        self._h5_compression_opts_menu.param.watch(
+            self._on_h5_compression_opts_selected, "clicked"
+        )
+        self._h5_shuffle_menu.param.watch(self._on_h5_shuffle_selected, "clicked")
+        self._h5_fletcher32_menu.param.watch(self._on_h5_fletcher32_selected, "clicked")
+        self._h5_data_level_menu.param.watch(self._on_h5_data_level_selected, "clicked")
 
         self.param.watch(self._update_input_type_for_client, "client_type")
+        self.param.watch(
+            self._on_browser_target_param_changed,
+            list(self._BROWSER_PARAM_TO_ACTION.keys()),
+        )
         self._update_input_type_for_client()
+
+    def _on_browser_selection_changed(self, event):
+        if event.new:
+            self.status = f"Selected {len(event.new)} item(s) in file browser."
+
+    def _set_browser_action_state(self, action_key: str, success: bool):
+        button = self._browser_action_buttons.get(action_key)
+        if button is not None:
+            button.button_type = "success" if success else "danger"
+
+    def _on_browser_target_param_changed(self, event):
+        action_key = self._BROWSER_PARAM_TO_ACTION.get(event.name)
+        if action_key is None:
+            return
+
+        if event.name == "miniseed_files":
+            success = len(self._split_paths(str(event.new))) > 0
+        else:
+            success = bool(str(event.new).strip())
+
+        self._set_browser_action_state(action_key, success=success)
+
+    def _set_path_parameter_from_selection(
+        self,
+        parameter_name: str,
+        action_key: str,
+        require_directory: bool = False,
+    ):
+        selected = self._selected_path()
+        if selected is None:
+            self.status = "No selection made in file browser."
+            self._set_browser_action_state(action_key, success=False)
+            return
+
+        if require_directory:
+            value = selected if selected.is_dir() else selected.parent
+        else:
+            value = selected
+
+        setattr(self, parameter_name, str(value))
+        self.status = f"Set {parameter_name} to: {value}"
+        self._set_browser_action_state(action_key, success=True)
+
+    def _run_browser_action(self, action_key: str, _event=None):
+        if action_key == "set_save_path":
+            self._set_path_parameter_from_selection(
+                "save_path", action_key, require_directory=True
+            )
+        elif action_key == "set_data_path":
+            self._set_path_parameter_from_selection(
+                "data_path", action_key, require_directory=True
+            )
+        elif action_key == "set_request_csv":
+            self._set_path_parameter_from_selection("request_csv", action_key)
+        elif action_key == "set_station_xml":
+            self._set_path_parameter_from_selection("station_xml_path", action_key)
+        elif action_key == "set_calibration_path":
+            self._set_path_parameter_from_selection("calibration_path", action_key)
+        elif action_key == "set_receiver_calibration_path":
+            self._set_path_parameter_from_selection(
+                "receiver_calibration_path", action_key
+            )
+        elif action_key == "set_sensor_calibration_path":
+            self._set_path_parameter_from_selection(
+                "sensor_calibration_path", action_key
+            )
+        elif action_key == "add_miniseed":
+            if not self._browser.value:
+                self.status = "No selections made in file browser."
+                self._set_browser_action_state(action_key, success=False)
+                return
+
+            existing = [item for item in self._split_paths(self.miniseed_files) if item]
+            for item in self._browser.value:
+                if item not in existing:
+                    existing.append(item)
+
+            self.miniseed_files = "\n".join(existing)
+            self.status = f"Added {len(self._browser.value)} miniSEED path(s)."
+            self._set_browser_action_state(action_key, success=True)
+
+    def _update_browser_actions(self):
+        action_keys = self._BROWSER_ACTIONS_BY_CLIENT.get(self.client_type, [])
+        self._browser_action_buttons = {}
+
+        buttons: list[pn.widgets.Button] = []
+        for action_key in action_keys:
+            button = pn.widgets.Button(
+                name=self._BROWSER_ACTION_LABELS[action_key],
+                button_type="danger",
+                sizing_mode="stretch_width",
+            )
+            button.on_click(
+                lambda event, key=action_key: self._run_browser_action(key, event)
+            )
+            self._browser_action_buttons[action_key] = button
+            buttons.append(button)
+
+        self._browser_actions_panel.objects = buttons
+
+    @staticmethod
+    def _to_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _on_h5_compression_selected(self, event):
+        value = event.new
+        if value in self.param.h5_compression.objects:
+            self.h5_compression = value
+            self._h5_compression_menu.name = f"Comp: {self.h5_compression}"
+
+    def _on_h5_compression_opts_selected(self, event):
+        self.h5_compression_opts = int(event.new)
+        self._h5_compression_opts_menu.name = f"Opts: {self.h5_compression_opts}"
+
+    def _on_h5_shuffle_selected(self, event):
+        self.h5_shuffle = self._to_bool(event.new)
+        self._h5_shuffle_menu.name = f"Shuffle: {self.h5_shuffle}"
+
+    def _on_h5_fletcher32_selected(self, event):
+        self.h5_fletcher32 = self._to_bool(event.new)
+        self._h5_fletcher32_menu.name = f"F32: {self.h5_fletcher32}"
+
+    def _on_h5_data_level_selected(self, event):
+        value = int(event.new)
+        if value in self.param.h5_data_level.objects:
+            self.h5_data_level = value
+            self._h5_data_level_menu.name = f"Level: {self.h5_data_level}"
 
     def _selected_path(self) -> Path | None:
         if not self._browser.value:
             return None
         return Path(self._browser.value[0])
 
-    def _set_data_from_selection(self, _event=None):
-        selected = self._selected_path()
-        if selected is None:
-            self.status = "No selection made in file browser."
-            return
-        self.data_path = str(selected if selected.is_dir() else selected.parent)
-
-    def _set_save_from_selection(self, _event=None):
-        selected = self._selected_path()
-        if selected is None:
-            self.status = "No selection made in file browser."
-            return
-        self.save_path = str(selected if selected.is_dir() else selected.parent)
-
-    def _set_request_from_selection(self, _event=None):
-        selected = self._selected_path()
-        if selected is None:
-            self.status = "No selection made in file browser."
-            return
-        self.request_csv = str(selected)
-
-    def _set_stationxml_from_selection(self, _event=None):
-        selected = self._selected_path()
-        if selected is None:
-            self.status = "No selection made in file browser."
-            return
-        self.station_xml_path = str(selected)
-
-    def _append_miniseed_from_selection(self, _event=None):
-        if not self._browser.value:
-            self.status = "No selections made in file browser."
-            return
-
-        existing = [item for item in self._split_paths(self.miniseed_files) if item]
-        for item in self._browser.value:
-            if item not in existing:
-                existing.append(item)
-        self.miniseed_files = "\n".join(existing)
-
     def _update_input_type_for_client(self, *_events):
         options = self._INPUT_TYPE_BY_CLIENT[self.client_type]
         self.param.input_type.objects = options
         self.input_type = options[0]
+        self._update_browser_actions()
 
     @staticmethod
     def _split_paths(raw: str) -> list[str]:
@@ -224,7 +448,7 @@ class MakeMTH5PanelApp(param.Parameterized):
         return {
             "mth5_version": self.mth5_version,
             "mth5_file_mode": self.mth5_file_mode,
-            "interact": self.interact,
+            # "interact": self.interact,
             "h5_compression": compression,
             "h5_compression_opts": self.h5_compression_opts,
             "h5_shuffle": self.h5_shuffle,
@@ -329,7 +553,9 @@ class MakeMTH5PanelApp(param.Parameterized):
                     receiver_calibration_dict=self._safe_path(
                         self.receiver_calibration_path
                     ),
-                    sensor_calibration_dict=self._safe_path(self.sensor_calibration_path),
+                    sensor_calibration_dict=self._safe_path(
+                        self.sensor_calibration_path
+                    ),
                     **common,
                     **extras,
                 )
@@ -340,7 +566,9 @@ class MakeMTH5PanelApp(param.Parameterized):
                 survey_id = self._safe_path(self.survey_id)
                 station_id = self._safe_path(self.station_id)
                 if data_path is None or survey_id is None or station_id is None:
-                    raise ValueError("data_path, survey_id, and station_id are required.")
+                    raise ValueError(
+                        "data_path, survey_id, and station_id are required."
+                    )
                 result = MakeMTH5.from_lemi(
                     data_path,
                     survey_id,
@@ -358,7 +586,9 @@ class MakeMTH5PanelApp(param.Parameterized):
                 survey_id = self._safe_path(self.survey_id)
                 station_id = self._safe_path(self.station_id)
                 if data_path is None or survey_id is None or station_id is None:
-                    raise ValueError("data_path, survey_id, and station_id are required.")
+                    raise ValueError(
+                        "data_path, survey_id, and station_id are required."
+                    )
                 result = MakeMTH5.from_lemi424(
                     data_path,
                     survey_id,
@@ -375,7 +605,9 @@ class MakeMTH5PanelApp(param.Parameterized):
                 survey_id = self._safe_path(self.survey_id)
                 station_id = self._safe_path(self.station_id)
                 if data_path is None or survey_id is None or station_id is None:
-                    raise ValueError("data_path, survey_id, and station_id are required.")
+                    raise ValueError(
+                        "data_path, survey_id, and station_id are required."
+                    )
                 result = MakeMTH5.from_lemi417(
                     data_path,
                     survey_id,
@@ -424,7 +656,9 @@ class MakeMTH5PanelApp(param.Parameterized):
                 survey_id = self._safe_path(self.survey_id)
                 station_id = self._safe_path(self.station_id)
                 if data_path is None or survey_id is None or station_id is None:
-                    raise ValueError("data_path, survey_id, and station_id are required.")
+                    raise ValueError(
+                        "data_path, survey_id, and station_id are required."
+                    )
                 result = MakeMTH5.from_uoa(
                     data_path,
                     survey_id,
@@ -504,13 +738,24 @@ class MakeMTH5PanelApp(param.Parameterized):
     def view(self):
         browser_tools = pn.Column(
             "### File Browser",
-            self._browser,
-            pn.Row(
-                self._set_data_button,
-                self._set_save_button,
-                self._set_request_button,
+            (
+                "### Use the file browser below to select files or directories depending on "
+                "what is required. Then click the "
+                "appropriate button to set the selected path for data, save location, request CSV,"
+                " StationXML, or miniSEED files."
             ),
-            pn.Row(self._set_stationxml_button, self._set_miniseed_button),
+            self._browser,
+            self._browser_actions_panel,
+            sizing_mode="stretch_width",
+        )
+
+        h5_controls_grid = pn.GridBox(
+            self._h5_compression_menu,
+            self._h5_data_level_menu,
+            self._h5_compression_opts_menu,
+            self._h5_shuffle_menu,
+            self._h5_fletcher32_menu,
+            ncols=2,
             sizing_mode="stretch_width",
         )
 
@@ -523,12 +768,7 @@ class MakeMTH5PanelApp(param.Parameterized):
                 "mth5_filename",
                 "mth5_version",
                 "mth5_file_mode",
-                "interact",
-                "h5_compression",
-                "h5_compression_opts",
-                "h5_shuffle",
-                "h5_fletcher32",
-                "h5_data_level",
+                # "interact",
                 "extra_kwargs_json",
                 "run",
             ],
@@ -538,9 +778,19 @@ class MakeMTH5PanelApp(param.Parameterized):
 
         return pn.Column(
             pn.pane.Markdown("## MakeMTH5 Builder"),
+            pn.pane.Markdown(
+                "This panel allows you to create MTH5 files from various supported clients. "
+                "Select the client type, provide the necessary input data, and click 'Create MTH5' "
+                "to generate the file."
+            ),
             self.client_help,
             pn.Row(
-                pn.Column(common_controls, self.client_specific_controls),
+                pn.Column(
+                    common_controls,
+                    pn.pane.Markdown("### H5 Options"),
+                    h5_controls_grid,
+                    self.client_specific_controls,
+                ),
                 browser_tools,
             ),
             pn.pane.Markdown("### Status"),
