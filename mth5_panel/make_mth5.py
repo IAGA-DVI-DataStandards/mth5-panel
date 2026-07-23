@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+from html import escape
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
@@ -233,12 +234,20 @@ class MakeMTH5PanelApp(param.Parameterized):
             sizing_mode="stretch_width",
         )
         self._browser_action_buttons: dict[str, pn.widgets.Button] = {}
-        self._status_display = pn.widgets.TextAreaInput(
-            name="Status",
-            value=self.status,
-            disabled=True,
+        self._status_display = pn.pane.HTML(
+            self._format_status_html(self.status),
             height=260,
             sizing_mode="stretch_width",
+            styles={
+                "overflow-y": "auto",
+                "white-space": "pre-wrap",
+                "font-family": "Consolas, 'Courier New', monospace",
+                "font-size": "0.9rem",
+                "padding": "0.5rem",
+                "border": "1px solid #d0d7de",
+                "border-radius": "0.375rem",
+                "background": "#f6f8fa",
+            },
         )
 
         self._browser.param.watch(self._on_browser_selection_changed, "value")
@@ -301,8 +310,12 @@ class MakeMTH5PanelApp(param.Parameterized):
         if button is not None:
             button.button_type = "success" if success else "danger"
 
+    @staticmethod
+    def _format_status_html(message: str) -> str:
+        return escape(message)
+
     def _on_status_changed(self, event):
-        self._status_display.value = event.new
+        self._status_display.object = self._format_status_html(event.new)
 
     def _on_browser_target_param_changed(self, event):
         action_key = self._BROWSER_PARAM_TO_ACTION.get(event.name)
