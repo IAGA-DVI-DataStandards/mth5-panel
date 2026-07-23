@@ -854,11 +854,11 @@ class MakeMTH5PanelApp(param.Parameterized):
 
         return pn.Column(
             pn.pane.Markdown("## MakeMTH5 Builder"),
-            pn.pane.Markdown(
-                "This panel allows you to create MTH5 files from various supported clients. "
-                "Select the client type, provide the necessary input data, and click 'Create MTH5' "
-                "to generate the file."
-            ),
+            # pn.pane.Markdown(
+            #     "This panel allows you to create MTH5 files from various supported clients. "
+            #     "Select the client type, provide the necessary input data, and click 'Create MTH5' "
+            #     "to generate the file."
+            # ),
             self.client_help,
             pn.layout.Divider(),
             pn.Row(
