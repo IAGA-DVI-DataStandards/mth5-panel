@@ -760,7 +760,8 @@ class MakeMTH5PanelApp(param.Parameterized):
             "### File Browser",
             (
                 "Use the file browser below to select files or directories depending on "
-                "what is required which are the red buttons below. The selected files/directories "
+                "what is required for the selected client, which are displayed as red buttons "
+                "below. The selected files/directories "
                 "will be used to populate the corresponding fields in the form below.  Once you "
                 "have selected the appropriate files/directories, click the red buttons to set the "
                 "values. The buttons will turn green when the values are set correctly and the "
@@ -778,7 +779,7 @@ class MakeMTH5PanelApp(param.Parameterized):
             self._h5_compression_opts_menu,
             self._h5_shuffle_menu,
             self._h5_fletcher32_menu,
-            ncols=2,
+            ncols=3,
             sizing_mode="stretch_width",
         )
 
@@ -786,7 +787,7 @@ class MakeMTH5PanelApp(param.Parameterized):
             self,
             parameters=[
                 "client_type",
-                "input_type",
+                # "input_type",
                 "save_path",
                 "mth5_filename",
                 "mth5_version",
@@ -816,15 +817,21 @@ class MakeMTH5PanelApp(param.Parameterized):
             pn.Row(
                 pn.Column(
                     common_controls,
+                    pn.layout.Divider(),
                     pn.pane.Markdown("### H5 Options"),
                     h5_controls_grid,
+                    pn.pane.Markdown(
+                        "### <span style='color:red'>REQUIRED</span>  Client Specific Controls",
+                    ),
+                    pn.layout.Divider(),
                     self.client_specific_controls,
                 ),
                 browser_tools,
             ),
+            pn.layout.Divider(),
+            run_button,
             pn.pane.Markdown("### Status"),
             pn.bind(lambda message: pn.pane.Str(message), self.param.status),
-            run_button,
         )
 
 
