@@ -702,7 +702,7 @@ class MakeMTH5PanelApp(param.Parameterized):
     @pn.depends("client_type")
     def client_help(self):
         return pn.pane.Markdown(
-            f"### Input Type\n{self._FILE_TYPE_HELP[self.client_type]}"
+            f"### For the Selected Client\n{self._FILE_TYPE_HELP[self.client_type]}"
         )
 
     @pn.depends("client_type")
@@ -814,17 +814,19 @@ class MakeMTH5PanelApp(param.Parameterized):
                 "to generate the file."
             ),
             self.client_help,
+            pn.layout.Divider(),
             pn.Row(
                 pn.Column(
                     common_controls,
                     pn.layout.Divider(),
                     pn.pane.Markdown("### H5 Options"),
                     h5_controls_grid,
+                    pn.layout.Divider(),
                     pn.pane.Markdown(
                         "### <span style='color:red'>REQUIRED</span>  Client Specific Controls",
                     ),
-                    pn.layout.Divider(),
                     self.client_specific_controls,
+                    width=500,
                 ),
                 browser_tools,
             ),
