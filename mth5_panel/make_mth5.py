@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import io
 import json
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import param
 
+from mth5 import logger as mth5_logger
 from mth5.clients.make_mth5 import MakeMTH5
 
 try:
@@ -232,6 +233,13 @@ class MakeMTH5PanelApp(param.Parameterized):
             sizing_mode="stretch_width",
         )
         self._browser_action_buttons: dict[str, pn.widgets.Button] = {}
+        self._status_display = pn.widgets.TextAreaInput(
+            name="Status",
+            value=self.status,
+            disabled=True,
+            height=260,
+            sizing_mode="stretch_width",
+        )
 
         self._browser.param.watch(self._on_browser_selection_changed, "value")
 
@@ -281,6 +289,7 @@ class MakeMTH5PanelApp(param.Parameterized):
             self._on_browser_target_param_changed,
             list(self._BROWSER_PARAM_TO_ACTION.keys()),
         )
+        self.param.watch(self._on_status_changed, "status")
         self._update_input_type_for_client()
 
     def _on_browser_selection_changed(self, event):
@@ -291,6 +300,9 @@ class MakeMTH5PanelApp(param.Parameterized):
         button = self._browser_action_buttons.get(action_key)
         if button is not None:
             button.button_type = "success" if success else "danger"
+
+    def _on_status_changed(self, event):
+        self._status_display.value = event.new
 
     def _on_browser_target_param_changed(self, event):
         action_key = self._BROWSER_PARAM_TO_ACTION.get(event.name)
@@ -482,9 +494,19 @@ class MakeMTH5PanelApp(param.Parameterized):
         return pd.read_csv(request_path)
 
     def _run_create(self):
+        log_buffer = io.StringIO()
         stdout_buffer = io.StringIO()
+        log_sink_id = None
         try:
-            with redirect_stdout(stdout_buffer):
+            with ExitStack() as stack:
+                stack.enter_context(redirect_stdout(stdout_buffer))
+                stack.enter_context(redirect_stderr(stdout_buffer))
+                log_sink_id = mth5_logger.add(
+                    log_buffer,
+                    level="INFO",
+                    colorize=False,
+                    format="{time} | {level: <8} | {name}:{function}:{line} | {message}",
+                )
                 common = self._common_kwargs()
                 extras = self._extra_kwargs()
 
@@ -687,6 +709,9 @@ class MakeMTH5PanelApp(param.Parameterized):
                     raise ValueError(f"Unsupported client_type: {self.client_type}")
 
             status_lines = [f"Created MTH5 successfully: {result}"]
+            log_text = log_buffer.getvalue().strip()
+            if log_text:
+                status_lines.extend(["", "Logs:", log_text])
             stdout_text = stdout_buffer.getvalue().strip()
             if stdout_text:
                 status_lines.extend(["", "Stdout:", stdout_text])
@@ -694,10 +719,16 @@ class MakeMTH5PanelApp(param.Parameterized):
 
         except Exception as error:  # pragma: no cover - UI path with broad user inputs
             status_lines = [f"Error: {error}"]
+            log_text = log_buffer.getvalue().strip()
+            if log_text:
+                status_lines.extend(["", "Logs:", log_text])
             stdout_text = stdout_buffer.getvalue().strip()
             if stdout_text:
                 status_lines.extend(["", "Stdout:", stdout_text])
             self.status = "\n".join(status_lines)
+        finally:
+            if log_sink_id is not None:
+                mth5_logger.remove(log_sink_id)
 
     @pn.depends("client_type")
     def client_help(self):
@@ -770,6 +801,8 @@ class MakeMTH5PanelApp(param.Parameterized):
             ),
             self._browser,
             self._browser_actions_panel,
+            pn.layout.Divider(),
+            self._status_display,
             sizing_mode="stretch_width",
         )
 
@@ -832,8 +865,6 @@ class MakeMTH5PanelApp(param.Parameterized):
             ),
             pn.layout.Divider(),
             run_button,
-            pn.pane.Markdown("### Status"),
-            pn.bind(lambda message: pn.pane.Str(message), self.param.status),
         )
 
 
