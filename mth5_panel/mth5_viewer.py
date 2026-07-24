@@ -56,6 +56,14 @@ COLORMAP = "Magma"
 TEMPLATE_KEY = "bootstrap"  # "golden" was default but was not working 17 Apr 2026
 
 
+def empty_curve():
+    return hv.Curve(([], []), kdims=["time"], vdims=["amplitude"]).opts(
+        frame_width=1,
+        height=1,
+        toolbar=None,
+    )
+
+
 def get_templates_dict() -> dict:
     """
     Returns a dictionary of available Panel templates.
@@ -120,7 +128,6 @@ class MTH5Viewer(param.Parameterized):
         self._curve_data_cache = {}  # key -> lightweight numeric payload for rendering
         self._channel_color_indices = {}  # key -> stable color index
         self._row_render_cache = {}  # cache of rendered row HoloViews objects
-        self._row_panes = {}  # persistent panes keyed by row index
         self._active_row_order = ()
         self.datashade_cache = {}  # key -> datashaded hv object
 
@@ -349,8 +356,13 @@ class MTH5Viewer(param.Parameterized):
             margin=0,
             max_width=self.plot_width_max,
         )
+        self.plot_pane = pn.pane.HoloViews(
+            empty_curve(),
+            sizing_mode="stretch_width",
+            max_width=self.plot_width_max,
+        )
         self.plots_card = pn.Card(
-            self.graphs,
+            self.plot_pane,
             title="Time Series Plots",
             sizing_mode="stretch_width",
             max_width=self.plot_width_max,
@@ -782,31 +794,13 @@ class MTH5Viewer(param.Parameterized):
             ]
 
         if not keys:
-            stale_pane = self._row_panes.pop(row_idx, None)
-            if stale_pane is not None and stale_pane in self.graphs.objects:
-                self.graphs.objects = [
-                    pane for pane in self.graphs.objects if pane is not stale_pane
-                ]
             return None
 
-        final = self._build_row_plot(row_idx, keys)
-        pane = self._row_panes.get(row_idx)
-        if pane is None:
-            pane = pn.pane.HoloViews(
-                final,
-                sizing_mode="stretch_width",
-                max_width=self.plot_width_max,
-            )
-            self._row_panes[row_idx] = pane
-        else:
-            pane.object = final
-            pane.sizing_mode = "stretch_width"
-            pane.max_width = self.plot_width_max
-        return pane
+        return self._build_row_plot(row_idx, keys)
 
     def update_plots(self):
         if not self._curve_data_cache:
-            self.graphs.objects = []
+            self.plot_pane.object = empty_curve()
             self._active_row_order = ()
             return
 
@@ -815,27 +809,24 @@ class MTH5Viewer(param.Parameterized):
             row_map.setdefault(row_idx, []).append(key)
 
         sorted_rows = sorted(row_map.keys())
-        panes = []
-
-        active_rows = set(sorted_rows)
-        for row_idx in list(self._row_panes):
-            if row_idx not in active_rows:
-                self._row_panes.pop(row_idx, None)
+        row_plots = []
 
         for row_idx in sorted_rows:
             keys = row_map[row_idx]
             if not keys:
                 continue
-            pane = self.update_plot(row_idx, keys=keys)
-            if pane is not None:
-                panes.append(pane)
+            row_plot = self.update_plot(row_idx, keys=keys)
+            if row_plot is not None:
+                row_plots.append(row_plot)
 
         row_order = tuple(sorted_rows)
-        if row_order != self._active_row_order or len(self.graphs.objects) != len(
-            panes
-        ):
-            self.graphs.objects = panes
-            self._active_row_order = row_order
+        if row_plots:
+            layout = hv.Layout(row_plots).cols(1).opts(shared_axes=True)
+        else:
+            layout = empty_curve()
+
+        self.plot_pane.object = layout
+        self._active_row_order = row_order
 
     def _render_plots(self):
         self.update_plots()
@@ -849,11 +840,10 @@ class MTH5Viewer(param.Parameterized):
         self._curve_data_cache = {}
         self._channel_color_indices = {}
         self._row_render_cache = {}
-        self._row_panes = {}
         self._active_row_order = ()
         self.datashade_cache = {}
         self.subplot_row_assignments = {}
-        self.graphs.objects = []
+        self.plot_pane.object = empty_curve()
         self.subplot_row_panel.clear()
 
     def clear_channels(self, event=None):

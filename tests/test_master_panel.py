@@ -187,7 +187,7 @@ def test_viewer_datashade_respects_toggle(monkeypatch):
     assert calls["datashade"] == 1
 
 
-def test_viewer_update_plot_reuses_existing_pane():
+def test_viewer_update_plot_returns_row_plot():
     pytest.importorskip("holoviews")
     from mth5_panel.mth5_viewer import MTH5Viewer
 
@@ -208,11 +208,40 @@ def test_viewer_update_plot_reuses_existing_pane():
     }
     viewer.subplot_row_assignments = {key: 1}
 
-    pane_a = viewer.update_plot(1, keys=[key])
-    object_a = pane_a.object
+    row_plot = viewer.update_plot(1, keys=[key])
+
+    assert row_plot is not None
+
+
+def test_viewer_update_plots_updates_shared_plot_pane():
+    pytest.importorskip("holoviews")
+    import holoviews as hv
+    from mth5_panel.mth5_viewer import MTH5Viewer
+
+    viewer = MTH5Viewer(use_template=False)
+    key = "survey.station.run.ex"
+    viewer._curve_data_cache = {
+        key: {
+            "x": np.asarray([0, 1]),
+            "y": np.asarray([0.0, 2.0]),
+            "y_normalized": np.asarray([0.0, 1.0]),
+            "dim": "time",
+            "vdim": "amplitude",
+            "units": "",
+            "color_index": 0,
+            "n_points": 2,
+        }
+    }
+    viewer.channel_colors = {key: "#4477AA"}
+    viewer.subplot_row_assignments = {key: 1}
+
+    viewer.update_plots()
+    first_object = viewer.plot_pane.object
 
     viewer.normalize_amplitude = True
-    pane_b = viewer.update_plot(1, keys=[key])
+    viewer.update_plots()
 
-    assert pane_b is pane_a
-    assert pane_b.object is not object_a
+    assert viewer.plot_pane.object is not None
+    assert viewer.plot_pane is not None
+    assert viewer.plot_pane.object is not first_object
+    assert isinstance(viewer.plot_pane.object, hv.Layout)
