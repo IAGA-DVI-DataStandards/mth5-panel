@@ -145,6 +145,25 @@ def test_viewer_normalize_callback_uses_update_plots(monkeypatch):
     assert calls["render"] == 0
 
 
+def test_viewer_calibrate_callback_updates_values(monkeypatch):
+    pytest.importorskip("holoviews")
+    from mth5_panel.mth5_viewer import MTH5Viewer
+
+    viewer = MTH5Viewer(use_template=False)
+    viewer.data_dict = {"dummy": object()}
+
+    calls = {"reload_data": None}
+
+    def _fake_update_plot_values(reload_data=False):
+        calls["reload_data"] = reload_data
+
+    monkeypatch.setattr(viewer, "_update_plot_values", _fake_update_plot_values)
+
+    viewer._on_calibrate_changed(type("Event", (), {"new": False})())
+
+    assert calls["reload_data"] is True
+
+
 def test_viewer_datashade_respects_toggle(monkeypatch):
     pytest.importorskip("holoviews")
     from mth5_panel import mth5_viewer as viewer_mod

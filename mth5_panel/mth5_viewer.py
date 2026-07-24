@@ -179,6 +179,7 @@ class MTH5Viewer(param.Parameterized):
         self.run_or_channel_checkbox.param.watch(self._on_choose_runs_checkbox, "value")
 
         self.calibrate_checkbox = pn.widgets.Checkbox(name="Calibrate", value=True)
+        self.calibrate_checkbox.param.watch(self._on_calibrate_changed, "value")
 
         self.show_hover_checkbox = pn.widgets.Checkbox(
             name="Show Hover Overlay", value=False
@@ -358,7 +359,7 @@ class MTH5Viewer(param.Parameterized):
         )
         self.plot_pane = pn.pane.HoloViews(
             empty_curve(),
-            sizing_mode="stretch_width",
+            sizing_mode="stretch_both",
             max_width=self.plot_width_max,
         )
         self.plots_card = pn.Card(
@@ -393,34 +394,38 @@ class MTH5Viewer(param.Parameterized):
     def _on_plot_button(self, *events):
         self.tabs.active = 2
         self._build_data_dict()
-        self._build_or_update_plots()
+        self._prepare_plot_payloads()
         self._update_subplot_row_selectors()
-        self._render_plots()
+        self._initialize_plots()
+
+    def _on_calibrate_changed(self, event):
+        if self.data_dict:
+            self._update_plot_values(reload_data=True)
 
     def _on_subtract_mean_changed(self, event):
         self.subtract_mean = event.new
         if self.data_dict:
-            self._build_or_update_plots()
-            self.update_plots()
+            self._update_plot_values(reload_data=False)
 
     def _on_combine_subplots_changed(self, event):
         self.combine_subplots = event.new
-        self.update_plots()
+        self._refresh_plots(reason="layout_changed")
 
     def _on_palette_changed(self, event=None):
         if self._curve_data_cache:
-            self.update_plots()
+            self._refresh_plots(reason="style_changed")
 
     def _on_overlay_hover_changed(self, event):
-        self.update_plots()
+        self._refresh_plots(reason="style_changed")
 
     def _on_normalize_changed(self, event):
         self.normalize_amplitude = event.new
-        self.update_plots()
+        if self._curve_data_cache or self.data_dict:
+            self._refresh_plots(reason="values_changed")
 
     def _on_use_datashade_changed(self, event):
         self.use_datashade = event.new
-        self.update_plots()
+        self._refresh_plots(reason="style_changed")
 
     # =========================================================
     # Data loading and selection
@@ -576,13 +581,12 @@ class MTH5Viewer(param.Parameterized):
     # =========================================================
     # Plotting pipeline
     # =========================================================
-    def _build_or_update_plots(self):
+    def _prepare_plot_payloads(self):
         """
-        Build or update the per-channel render cache based on self.data_dict
-        and current settings.
+        Build per-channel numeric payloads from self.data_dict.
+        This stage is pure data preparation and does not render plots.
         """
         t1 = time.perf_counter(), time.process_time()
-        self.plot_channel_curves = {}
         self._curve_data_cache = {}
         self._channel_color_indices = {}
         self._row_render_cache = {}
@@ -606,21 +610,26 @@ class MTH5Viewer(param.Parameterized):
                     self._curve_data_cache[ch_key] = self._build_curve_payload(
                         ch_da, color_index
                     )
-                    self.plot_channel_curves[ch_key] = self._make_channel_curve(
-                        ch_key, self._curve_data_cache[ch_key]
-                    )
             else:
                 color_index = len(self._channel_color_indices)
                 self._channel_color_indices[key] = color_index
                 self._curve_data_cache[key] = self._build_curve_payload(
                     data, color_index
                 )
-                self.plot_channel_curves[key] = self._make_channel_curve(
-                    key, self._curve_data_cache[key]
-                )
+
+        self._refresh_channel_colors()
         self._init_row_assignments()
         t2 = time.perf_counter(), time.process_time()
         print(f" Plots generated in: {t2[0] - t1[0]:.2f} seconds")
+
+    def _build_or_update_plots(self):
+        """Backward-compatible wrapper for existing callers."""
+        self._prepare_plot_payloads()
+
+    def _refresh_channel_colors(self):
+        self.channel_colors = {}
+        for ch_key, color_index in self._channel_color_indices.items():
+            self.channel_colors[ch_key] = self._get_channel_color(ch_key, color_index)
 
     def _build_curve_payload(self, ch_data, color_index):
         dim = list(ch_data.dims)[0]
@@ -665,7 +674,7 @@ class MTH5Viewer(param.Parameterized):
         return curve
 
     def _init_row_assignments(self):
-        keys = list(self.plot_channel_curves.keys())
+        keys = list(self._curve_data_cache.keys())
         if not self.subplot_row_assignments or set(
             self.subplot_row_assignments.keys()
         ) != set(keys):
@@ -674,7 +683,7 @@ class MTH5Viewer(param.Parameterized):
 
     def _update_subplot_row_selectors(self):
         self.subplot_row_panel.clear()
-        keys = list(self.plot_channel_curves.keys())
+        keys = list(self._curve_data_cache.keys())
         n = len(keys)
         row_options = [str(i + 1) for i in range(n)]
 
@@ -690,7 +699,7 @@ class MTH5Viewer(param.Parameterized):
                 def _cb(event):
                     self.subplot_row_assignments[k] = int(event.new)
                     self._ordering_version += 1
-                    self._render_plots()
+                    self._refresh_plots(reason="layout_changed")
 
                 return _cb
 
@@ -699,11 +708,11 @@ class MTH5Viewer(param.Parameterized):
             self.subplot_row_panel.append(row)
 
     def _reset_ordering(self, event=None):
-        keys = list(self.plot_channel_curves.keys())
+        keys = list(self._curve_data_cache.keys())
         self.subplot_row_assignments = {k: i + 1 for i, k in enumerate(keys)}
         self._ordering_version += 1
         self._update_subplot_row_selectors()
-        self._render_plots()
+        self._refresh_plots(reason="layout_changed")
 
     def _get_length(self, key):
         try:
@@ -761,7 +770,7 @@ class MTH5Viewer(param.Parameterized):
                 )
             hv_objs[k] = unified
 
-        overlay_raw = hv.NdOverlay(hv_objs, kdims="channel").opts(width=self.plot_width)
+        overlay_raw = hv.NdOverlay(hv_objs, kdims="channel")
 
         if use_datashader:
             print(f"Datashading row {row_idx} with channels: {keys}")
@@ -773,7 +782,6 @@ class MTH5Viewer(param.Parameterized):
                 aggregator="any",
                 height=self.plot_height,
                 color_key=color_key,
-                width=self.plot_width,
             )
 
             if self.show_hover_checkbox.value:
@@ -781,36 +789,20 @@ class MTH5Viewer(param.Parameterized):
         else:
             final = overlay_raw
 
-        final = final.opts(frame_width=self.plot_width)
+        final = final.opts(
+            frame_width=min(self.plot_width, self.plot_width_max),
+            responsive=True,
+        )
         self._row_render_cache[cache_key] = final
         return final
 
-    def update_plot(self, row_idx, keys=None):
-        if keys is None:
-            keys = [
-                key
-                for key, assigned_row in self.subplot_row_assignments.items()
-                if assigned_row == row_idx
-            ]
-
-        if not keys:
-            return None
-
-        return self._build_row_plot(row_idx, keys)
-
-    def update_plots(self):
-        if not self._curve_data_cache:
-            self.plot_pane.object = empty_curve()
-            self._active_row_order = ()
-            return
-
+    def _compose_layout(self):
         row_map = {}
         for key, row_idx in self.subplot_row_assignments.items():
             row_map.setdefault(row_idx, []).append(key)
 
         sorted_rows = sorted(row_map.keys())
         row_plots = []
-
         for row_idx in sorted_rows:
             keys = row_map[row_idx]
             if not keys:
@@ -825,11 +817,112 @@ class MTH5Viewer(param.Parameterized):
         else:
             layout = empty_curve()
 
+        return layout, row_order
+
+    def update_plot(self, row_idx, keys=None):
+        if keys is None:
+            keys = [
+                key
+                for key, assigned_row in self.subplot_row_assignments.items()
+                if assigned_row == row_idx
+            ]
+
+        if not keys:
+            return None
+
+        return self._build_row_plot(row_idx, keys)
+
+    def _initialize_plots(self):
+        """
+        Initialize plot layout after payloads are prepared.
+        Called on first plot render or structural data changes.
+        """
+        if not self._curve_data_cache:
+            self.plot_pane.object = empty_curve()
+            self._active_row_order = ()
+            return
+
+        self._row_render_cache = {}
+        layout, row_order = self._compose_layout()
         self.plot_pane.object = layout
         self._active_row_order = row_order
 
-    def _render_plots(self):
+    def update_plots(self):
+        """
+        Lightweight plot refresh using existing payloads and row assignments.
+        """
+        if not self._curve_data_cache:
+            self.plot_pane.object = empty_curve()
+            self._active_row_order = ()
+            return
+
+        self._row_render_cache = {}
+        layout, row_order = self._compose_layout()
+        self.plot_pane.object = layout
+        self._active_row_order = row_order
+
+    def _update_plot_values(self, reload_data=False):
+        """
+        Update value payloads used by curves without rebuilding UI controls.
+
+        reload_data=True is used for calibrate changes because values come
+        from a different source representation.
+        """
+        previous_assignments = dict(self.subplot_row_assignments)
+
+        if reload_data:
+            self._build_data_dict()
+
+        self._prepare_plot_payloads()
+
+        if previous_assignments:
+            keys = set(self._curve_data_cache.keys())
+            self.subplot_row_assignments = {
+                k: r for k, r in previous_assignments.items() if k in keys
+            }
+            missing = [
+                k
+                for k in self._curve_data_cache.keys()
+                if k not in self.subplot_row_assignments
+            ]
+            if missing:
+                start_row = max(self.subplot_row_assignments.values(), default=0)
+                for i, k in enumerate(missing, start=1):
+                    self.subplot_row_assignments[k] = start_row + i
+
+        self._update_subplot_row_selectors()
         self.update_plots()
+
+    def _refresh_plots(self, reason="values_changed"):
+        """
+        Route plotting updates by intent.
+        - data_changed: data selection changed, rebuild payloads and initialize
+        - values_changed: update y values (subtract mean/normalize/calibrate)
+        - style_changed: update colors/tools/datashade state
+        - layout_changed: row assignments or combine mode changed
+        """
+        if reason == "data_changed":
+            self._prepare_plot_payloads()
+            self._initialize_plots()
+            return
+
+        if reason == "values_changed":
+            self.update_plots()
+            return
+
+        if reason == "style_changed":
+            self._refresh_channel_colors()
+            self.update_plots()
+            return
+
+        if reason == "layout_changed":
+            self.update_plots()
+            return
+
+        self.update_plots()
+
+    def _render_plots(self):
+        self._refresh_plots(reason="values_changed")
 
     # =========================================================
     # Clear / reset
