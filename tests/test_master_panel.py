@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import panel as pn
 import pytest
 
@@ -116,13 +117,22 @@ def test_viewer_use_datashade_toggle_triggers_render(monkeypatch):
 
 def test_viewer_datashade_respects_toggle(monkeypatch):
     pytest.importorskip("holoviews")
-    import holoviews as hv
     from mth5_panel import mth5_viewer as viewer_mod
 
     viewer = viewer_mod.MTH5Viewer(use_template=False)
     key = "survey.station.run.ex"
 
-    viewer.plot_channel_curves = {key: hv.Curve(([0, 1], [0, 1]))}
+    viewer._curve_data_cache = {
+        key: {
+            "x": np.asarray([0, 1]),
+            "y": np.asarray([0, 1]),
+            "dim": "time",
+            "vdim": "amplitude",
+            "units": "",
+            "color_index": 0,
+        }
+    }
+    viewer._channel_color_indices = {key: 0}
     viewer.subplot_row_assignments = {key: 1}
     viewer.channel_colors = {key: "#4477AA"}
 

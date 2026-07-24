@@ -117,6 +117,9 @@ class MTH5Viewer(param.Parameterized):
 
         self.data_dict = {}  # key -> xarray object
         self.plot_channel_curves = {}  # key -> pn.pane.HoloViews
+        self._curve_data_cache = {}  # key -> lightweight numeric payload for rendering
+        self._channel_color_indices = {}  # key -> stable color index
+        self._row_render_cache = {}  # cache of rendered row panes
         self.datashade_cache = {}  # key -> datashaded hv object
 
         self.subplot_row_assignments = {}  # key -> row index (1-based int)
@@ -385,8 +388,7 @@ class MTH5Viewer(param.Parameterized):
         self._render_plots()
 
     def _on_palette_changed(self, event=None):
-        if self.data_dict:
-            self._build_or_update_plots()
+        if self._curve_data_cache:
             self._render_plots()
 
     def _on_overlay_hover_changed(self, event):
@@ -556,11 +558,14 @@ class MTH5Viewer(param.Parameterized):
     # =========================================================
     def _build_or_update_plots(self):
         """
-        Build or update per-channel curves in self.plot_channel_curves
-        based on self.data_dict and current settings.
+        Build or update the per-channel render cache based on self.data_dict
+        and current settings.
         """
         t1 = time.perf_counter(), time.process_time()
         self.plot_channel_curves = {}
+        self._curve_data_cache = {}
+        self._channel_color_indices = {}
+        self._row_render_cache = {}
         keys = list(self.data_dict.keys())
 
         for idx, key in enumerate(keys):
@@ -576,34 +581,54 @@ class MTH5Viewer(param.Parameterized):
                 for j, ch in enumerate(data.data_vars):
                     ch_da = data[ch]
                     ch_key = f"{key}.{ch_da.component}"
-                    color_index = idx + j
-                    curve = self._make_channel_curve(ch_da, ch_key, color_index)
-                    self.plot_channel_curves[ch_key] = curve
+                    color_index = len(self._channel_color_indices)
+                    self._channel_color_indices[ch_key] = color_index
+                    self._curve_data_cache[ch_key] = self._build_curve_payload(
+                        ch_da, color_index
+                    )
+                    self.plot_channel_curves[ch_key] = self._make_channel_curve(
+                        ch_key, self._curve_data_cache[ch_key]
+                    )
             else:
-                color_index = idx
-                curve = self._make_channel_curve(data, key, color_index)
-                self.plot_channel_curves[key] = curve
+                color_index = len(self._channel_color_indices)
+                self._channel_color_indices[key] = color_index
+                self._curve_data_cache[key] = self._build_curve_payload(
+                    data, color_index
+                )
+                self.plot_channel_curves[key] = self._make_channel_curve(
+                    key, self._curve_data_cache[key]
+                )
         self._init_row_assignments()
         t2 = time.perf_counter(), time.process_time()
         print(f" Plots generated in: {t2[0] - t1[0]:.2f} seconds")
 
-    def _make_channel_curve(self, ch_data, ch_key, color_index):
+    def _build_curve_payload(self, ch_data, color_index):
+        dim = list(ch_data.dims)[0]
+        return {
+            "x": np.asarray(ch_data[dim].values),
+            "y": np.asarray(ch_data.values),
+            "dim": dim,
+            "vdim": ch_data.name or "amplitude",
+            "units": getattr(ch_data, "units", ""),
+            "color_index": color_index,
+        }
+
+    def _make_channel_curve(self, ch_key, payload):
         """
         Return a pure HoloViews Curve (no datashader, no Pane).
         Used for row-level overlays and datashading.
         """
 
-        color = self._get_channel_color(ch_key, color_index)
+        color = self._get_channel_color(ch_key, payload["color_index"])
         self.channel_colors[ch_key] = color
 
-        # Assume time is the first dimension
-        dim = list(ch_data.dims)[0]
-        x = ch_data[dim]
-        y = ch_data
-
-        curve = hv.Curve((x, y), kdims=[dim], vdims=[ch_data.name]).opts(
+        curve = hv.Curve(
+            (payload["x"], payload["y"]),
+            kdims=[payload["dim"]],
+            vdims=[payload["vdim"]],
+        ).opts(
             height=self.plot_height,
-            ylabel=getattr(ch_data, "units", ""),
+            ylabel=payload["units"],
             title=ch_key,
             color=color,
             tools=["hover"],
@@ -667,7 +692,7 @@ class MTH5Viewer(param.Parameterized):
         return 0
 
     def _render_plots(self):
-        if not self.plot_channel_curves:
+        if not self._curve_data_cache:
             self.graphs.objects = []
             return
 
@@ -683,6 +708,20 @@ class MTH5Viewer(param.Parameterized):
             if not keys:
                 continue
 
+            cache_key = (
+                tuple(keys),
+                self.normalize_amplitude,
+                self.use_datashade,
+                self.palette_selector.value,
+                self.lock_color_identity.value,
+                self.plot_width,
+                self.plot_height,
+            )
+            cached_row = self._row_render_cache.get(cache_key)
+            if cached_row is not None:
+                panes.append(cached_row)
+                continue
+
             # Datashade is opt-in, then automatically applied on large rows.
             use_datashader = self.use_datashade and any(
                 self._get_length(k) > DATASHADE_THRESHOLD for k in keys
@@ -691,9 +730,9 @@ class MTH5Viewer(param.Parameterized):
             # Collect raw curves
             hv_objs = {}
             for k in keys:
-                curve = self.plot_channel_curves[k]
-                xs = curve.dimension_values(0)
-                ys = curve.dimension_values(1)
+                payload = self._curve_data_cache[k]
+                xs = payload["x"]
+                ys = payload["y"]
 
                 if self.normalize_amplitude and np.ptp(ys) > 0:
                     ys = (ys - ys.min()) / np.ptp(ys)
@@ -703,14 +742,14 @@ class MTH5Viewer(param.Parameterized):
                 # Clone with unified vdims for datashading
                 if use_datashader:
                     unified = hv.Curve(
-                        (xs, ys), kdims=["time"], vdims=["amplitude"]
+                        (xs, ys), kdims=[payload["dim"]], vdims=["amplitude"]
                     ).opts(
                         color=self.channel_colors[k],
                         title=k,
                     )
                 else:
                     unified = hv.Curve(
-                        (xs, ys), kdims=["time"], vdims=curve.vdims
+                        (xs, ys), kdims=[payload["dim"]], vdims=[payload["vdim"]]
                     ).opts(
                         color=self.channel_colors[k],
                         title=k,
@@ -765,6 +804,7 @@ class MTH5Viewer(param.Parameterized):
                 sizing_mode="stretch_width",
                 max_width=self.plot_width_max,
             )
+            self._row_render_cache[cache_key] = pane
             panes.append(pane)
 
         column = pn.Column(
