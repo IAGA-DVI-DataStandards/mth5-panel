@@ -32,7 +32,7 @@ except (
     ) from error
 
 
-pn.extension(sizing_mode="stretch_width")
+pn.extension("tabulator", sizing_mode="stretch_width")
 
 
 class MakeMTH5PanelApp(param.Parameterized):
@@ -112,6 +112,10 @@ class MakeMTH5PanelApp(param.Parameterized):
     )
 
     status = param.String(default="Ready")
+    created_mth5_path = param.String(
+        default="",
+        doc="Absolute or relative path to last successfully created MTH5 file.",
+    )
 
     run = param.Action(lambda self: self._run_create(), label="Create MTH5")
 
@@ -721,6 +725,7 @@ class MakeMTH5PanelApp(param.Parameterized):
                 else:
                     raise ValueError(f"Unsupported client_type: {self.client_type}")
 
+            self.created_mth5_path = str(result) if result is not None else ""
             status_lines = [f"Created MTH5 successfully: {result}"]
             log_text = log_buffer.getvalue().strip()
             if log_text:
@@ -731,6 +736,7 @@ class MakeMTH5PanelApp(param.Parameterized):
             self.status = "\n".join(status_lines)
 
         except Exception as error:  # pragma: no cover - UI path with broad user inputs
+            self.created_mth5_path = ""
             status_lines = [f"Error: {error}"]
             log_text = log_buffer.getvalue().strip()
             if log_text:
@@ -801,17 +807,6 @@ class MakeMTH5PanelApp(param.Parameterized):
 
     def view(self):
         browser_tools = pn.Column(
-            "### File Browser",
-            (
-                "Use the file browser below to select files or directories depending on "
-                "what is required for the selected client, which are displayed as red buttons "
-                "below. The selected files/directories "
-                "will be used to populate the corresponding fields in the form below.  Once you "
-                "have selected the appropriate files/directories, click the red buttons to set the "
-                "values. The buttons will turn green when the values are set correctly and the "
-                "selection will be cleared.  You can also manually enter the paths in the form "
-                "below if you prefer."
-            ),
             self._browser,
             self._browser_actions_panel,
             pn.layout.Divider(),
@@ -825,7 +820,7 @@ class MakeMTH5PanelApp(param.Parameterized):
             self._h5_compression_opts_menu,
             self._h5_shuffle_menu,
             self._h5_fletcher32_menu,
-            ncols=3,
+            ncols=2,
             sizing_mode="stretch_width",
         )
 
@@ -854,11 +849,27 @@ class MakeMTH5PanelApp(param.Parameterized):
 
         return pn.Column(
             pn.pane.Markdown("## MakeMTH5 Builder"),
-            # pn.pane.Markdown(
-            #     "This panel allows you to create MTH5 files from various supported clients. "
-            #     "Select the client type, provide the necessary input data, and click 'Create MTH5' "
-            #     "to generate the file."
-            # ),
+            "### Instructions",
+            (
+                "**Step 1**: Select the client type from the dropdown menu. This will determine the required "
+                "input files and directories needed to create the MTH5 file.\n\n"
+                "**Step 2**: Use the file browser below to select the required files or directories. \n"
+                "Use the file browser below to select files or directories depending on "
+                "what is required for the selected client, which are displayed as red buttons "
+                "below. The selected files/directories will be used to populate the corresponding "
+                "fields in the form below.  Once you have selected the appropriate files/directories, "
+                "click the red buttons to set the values. The buttons will turn green when the "
+                "values are set correctly and the selection will be cleared.  You can also "
+                "manually enter the paths in the form below if you prefer.\n\n"
+                "**Step 3**: Fill in any additional required fields in the form below. Fields  "
+                "under the client specific controls that are required.\n\n"
+                "**Step 4**: Click the 'Create MTH5' button to generate the MTH5 file. The status of the "
+                "operation will be displayed in the status area below the file browser. If the operation "
+                "is successful, the path to the created MTH5 file will be displayed. If there are any "
+                "errors, they will be displayed in the status area as well.\n\n"
+                "**Step 5**: Once the MTH5 file is created, you can use the 'Handoff' button to open the "
+                "MTH5 file in the MTH5 Viewer for further inspection and analysis."
+            ),
             self.client_help,
             pn.layout.Divider(),
             pn.Row(
@@ -872,7 +883,7 @@ class MakeMTH5PanelApp(param.Parameterized):
                         "### <span style='color:red'>REQUIRED</span>  Client Specific Controls",
                     ),
                     self.client_specific_controls,
-                    width=500,
+                    width=400,
                 ),
                 browser_tools,
             ),
@@ -887,5 +898,6 @@ def build_app() -> pn.Column:
     return app.view()
 
 
-panel_app = build_app()
-panel_app.servable()
+if __name__.startswith("bokeh_app") or __name__ == "__main__":
+    panel_app = build_app()
+    panel_app.servable()

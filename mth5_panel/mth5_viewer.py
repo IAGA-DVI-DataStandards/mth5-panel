@@ -18,13 +18,14 @@ from mth5 import CHANNEL_DTYPE, RUN_SUMMARY_DTYPE
 
 import time
 
+pn.extension("tabulator", sizing_mode="stretch_width")
 hv.extension("bokeh")
 xarray.set_options(keep_attrs=True)
 
 # --------------------------------------------------------------
 # Global Constants
 # --------------------------------------------------------------
-DATASHADE_THRESHOLD = 1_000_000
+DATASHADE_THRESHOLD = 5_000_000
 
 CH_SUMMARY_DISPLAY_COLUMNS = [
     "survey",
@@ -54,11 +55,12 @@ COLORMAP = "Magma"
 
 TEMPLATE_KEY = "bootstrap"  # "golden" was default but was not working 17 Apr 2026
 
-def get_templates_dict()-> dict:
+
+def get_templates_dict() -> dict:
     """
     Returns a dictionary of available Panel templates.
 
-    Panel templates are used to define the layout and styling of a Panel application.  
+    Panel templates are used to define the layout and styling of a Panel application.
     """
     templates = {}
     templates["bootstrap"] = pn.template.BootstrapTemplate
@@ -68,7 +70,7 @@ def get_templates_dict()-> dict:
     return templates
 
 
-class Tsvi(param.Parameterized):
+class MTH5Viewer(param.Parameterized):
     # -------------------------
     # Parameters (reactive state)
     # -------------------------
@@ -85,17 +87,24 @@ class Tsvi(param.Parameterized):
 
     combine_subplots = param.Boolean(default=True)
     _ordering_version = param.Integer(default=0)
+    use_datashade = param.Boolean(
+        default=False,
+        doc="Enable datashading for rows exceeding the datashade threshold.",
+    )
     normalize_amplitude = param.Boolean(
         default=False, doc="Normalize each curve before datashading"
     )
 
-    def __init__(self, **kwargs):
+    def __init__(self, use_template=True, **kwargs):
         super().__init__(**kwargs)
+        self.use_template = use_template
 
         # -------------------------
         # Template
         # -------------------------
-        self.template = get_templates_dict()[TEMPLATE_KEY](title="TSVI")
+        self.template = None
+        if self.use_template:
+            self.template = get_templates_dict()[TEMPLATE_KEY](title="MTH5 Viewer")
 
         # -------------------------
         # Data state
@@ -156,7 +165,7 @@ class Tsvi(param.Parameterized):
 
         self.run_or_channel_checkbox = pn.widgets.Checkbox(name="Pick Runs", value=True)
         self.run_or_channel_checkbox.param.watch(self._on_choose_runs_checkbox, "value")
-        
+
         self.calibrate_checkbox = pn.widgets.Checkbox(name="Calibrate", value=True)
 
         self.show_hover_checkbox = pn.widgets.Checkbox(
@@ -168,6 +177,11 @@ class Tsvi(param.Parameterized):
             name="Normalize Amplitude", value=False
         )
         self.normalize_checkbox.param.watch(self._on_normalize_changed, "value")
+
+        self.use_datashade_checkbox = pn.widgets.Checkbox(
+            name="Use Datashade", value=False
+        )
+        self.use_datashade_checkbox.param.watch(self._on_use_datashade_changed, "value")
 
         self.clear_plots_button = pn.widgets.Button(
             name="Clear Plots", button_type="danger"
@@ -246,7 +260,20 @@ class Tsvi(param.Parameterized):
         # -------------------------
         # Layout
         # -------------------------
-        self.template.main[:] = [self.tabs]
+        if self.use_template:
+            self.template.main[:] = [self.tabs]
+            self.main_view = self.template
+        else:
+            self.main_view = pn.Row(
+                pn.Card(
+                    *self._sidebar_items,
+                    title="Controls",
+                    width=300,
+                    sizing_mode="stretch_height",
+                ),
+                self.tabs,
+                sizing_mode="stretch_width",
+            )
 
         # -------------------------
         # Resource streaming
@@ -257,14 +284,15 @@ class Tsvi(param.Parameterized):
     # Sidebar
     # =========================================================
     def _build_sidebar(self):
-        self.template.sidebar[:] = [
+        self._sidebar_items = [
             self.cpu_usage,
             self.memory_usage,
             self.run_or_channel_checkbox,
-            self.calibrate_checkbox, 
+            self.calibrate_checkbox,
             self.subtract_mean_checkbox,
             self.combine_subplots_checkbox,
             self.normalize_checkbox,
+            self.use_datashade_checkbox,
             self.lock_color_identity,
             self.show_hover_checkbox,
             self.palette_selector,
@@ -274,6 +302,8 @@ class Tsvi(param.Parameterized):
             self.clear_plots_button,
             self.clear_channels_button,
         ]
+        if self.template is not None:
+            self.template.sidebar[:] = self._sidebar_items
 
     # =========================================================
     # Tabs
@@ -324,7 +354,13 @@ class Tsvi(param.Parameterized):
         self._refresh_channels_tab()
 
     def _on_files_changed(self, event):
-        self._load_summaries_from_files(event.new)
+        self.load_files(event.new)
+
+    def load_files(self, file_paths):
+        if not file_paths:
+            return
+        paths = [str(pathlib.Path(path)) for path in file_paths]
+        self._load_summaries_from_files(paths)
         self._refresh_channels_tab()
         self.tabs.active = 0
 
@@ -358,6 +394,10 @@ class Tsvi(param.Parameterized):
 
     def _on_normalize_changed(self, event):
         self.normalize_amplitude = event.new
+        self._render_plots()
+
+    def _on_use_datashade_changed(self, event):
+        self.use_datashade = event.new
         self._render_plots()
 
     # =========================================================
@@ -546,6 +586,7 @@ class Tsvi(param.Parameterized):
         self._init_row_assignments()
         t2 = time.perf_counter(), time.process_time()
         print(f" Plots generated in: {t2[0] - t1[0]:.2f} seconds")
+
     def _make_channel_curve(self, ch_data, ch_key, color_index):
         """
         Return a pure HoloViews Curve (no datashader, no Pane).
@@ -642,8 +683,8 @@ class Tsvi(param.Parameterized):
             if not keys:
                 continue
 
-            # Determine if datashader is needed for this row
-            use_datashader = any(
+            # Datashade is opt-in, then automatically applied on large rows.
+            use_datashader = self.use_datashade and any(
                 self._get_length(k) > DATASHADE_THRESHOLD for k in keys
             )
 
@@ -776,8 +817,14 @@ class Tsvi(param.Parameterized):
     # Entry Point
     # =========================================================
     def view(self):
-        return self.template
+        return self.main_view
 
 
-tsvi = Tsvi(plot_width=700, plot_height=200)
-tsvi.template.servable()
+def build_app():
+    mth5_viewer = MTH5Viewer(plot_width=700, plot_height=200)
+    return mth5_viewer.view()
+
+
+if __name__.startswith("bokeh_app") or __name__ == "__main__":
+    panel_app = build_app()
+    panel_app.servable()
