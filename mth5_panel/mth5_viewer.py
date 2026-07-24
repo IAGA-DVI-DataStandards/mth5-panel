@@ -119,7 +119,9 @@ class MTH5Viewer(param.Parameterized):
         self.plot_channel_curves = {}  # key -> pn.pane.HoloViews
         self._curve_data_cache = {}  # key -> lightweight numeric payload for rendering
         self._channel_color_indices = {}  # key -> stable color index
-        self._row_render_cache = {}  # cache of rendered row panes
+        self._row_render_cache = {}  # cache of rendered row HoloViews objects
+        self._row_panes = {}  # persistent panes keyed by row index
+        self._active_row_order = ()
         self.datashade_cache = {}  # key -> datashaded hv object
 
         self.subplot_row_assignments = {}  # key -> row index (1-based int)
@@ -702,6 +704,106 @@ class MTH5Viewer(param.Parameterized):
             return data.sizes["time"]
         return 0
 
+    def _get_row_cache_key(self, keys):
+        return (
+            tuple(keys),
+            self.normalize_amplitude,
+            self.use_datashade,
+            self.palette_selector.value,
+            self.lock_color_identity.value,
+            self.plot_width,
+            self.plot_height,
+        )
+
+    def _build_row_plot(self, row_idx, keys):
+        cache_key = self._get_row_cache_key(keys)
+        cached_final = self._row_render_cache.get(cache_key)
+        if cached_final is not None:
+            return cached_final
+
+        use_datashader = self.use_datashade and any(
+            self._curve_data_cache[k].get("n_points", self._get_length(k))
+            > DATASHADE_THRESHOLD
+            for k in keys
+        )
+
+        hv_objs = {}
+        for k in keys:
+            payload = self._curve_data_cache[k]
+            xs = payload["x"]
+            ys = payload["y_normalized"] if self.normalize_amplitude else payload["y"]
+
+            if use_datashader:
+                unified = hv.Curve(
+                    (xs, ys), kdims=[payload["dim"]], vdims=["amplitude"]
+                ).opts(
+                    color=self.channel_colors[k],
+                    title=k,
+                )
+            else:
+                unified = hv.Curve(
+                    (xs, ys), kdims=[payload["dim"]], vdims=[payload["vdim"]]
+                ).opts(
+                    color=self.channel_colors[k],
+                    title=k,
+                )
+            hv_objs[k] = unified
+
+        overlay_raw = hv.NdOverlay(hv_objs, kdims="channel").opts(width=self.plot_width)
+
+        if use_datashader:
+            print(f"Datashading row {row_idx} with channels: {keys}")
+            color_key = {k: self.channel_colors[k] for k in keys}
+            print(color_key)
+
+            final = datashade(
+                overlay_raw,
+                aggregator="any",
+                height=self.plot_height,
+                color_key=color_key,
+                width=self.plot_width,
+            )
+
+            if self.show_hover_checkbox.value:
+                print("Adding a hover overlay does not work yet. Skipping.")
+        else:
+            final = overlay_raw
+
+        final = final.opts(frame_width=self.plot_width)
+        self._row_render_cache[cache_key] = final
+        return final
+
+    def update_plot(self, row_idx, keys=None):
+        if keys is None:
+            keys = [
+                key
+                for key, assigned_row in self.subplot_row_assignments.items()
+                if assigned_row == row_idx
+            ]
+
+        if not keys:
+            stale_pane = self._row_panes.pop(row_idx, None)
+            if stale_pane is not None and stale_pane in self.graphs.objects:
+                self.graphs.objects = [
+                    pane for pane in self.graphs.objects if pane is not stale_pane
+                ]
+            return None
+
+        final = self._build_row_plot(row_idx, keys)
+        pane = self._row_panes.get(row_idx)
+        if pane is None:
+            pane = pn.pane.HoloViews(
+                final,
+                sizing_mode="stretch_width",
+                max_width=self.plot_width_max,
+            )
+            self._row_panes[row_idx] = pane
+        else:
+            pane.object = final
+            pane.sizing_mode = "stretch_width"
+            pane.max_width = self.plot_width_max
+        return pane
+
     def _render_plots(self):
         if not self._curve_data_cache:
             self.graphs.objects = []
@@ -714,119 +816,25 @@ class MTH5Viewer(param.Parameterized):
         sorted_rows = sorted(row_map.keys())
         panes = []
 
+        active_rows = set(sorted_rows)
+        for row_idx in list(self._row_panes):
+            if row_idx not in active_rows:
+                self._row_panes.pop(row_idx, None)
+
         for row_idx in sorted_rows:
             keys = row_map[row_idx]
             if not keys:
                 continue
+            pane = self.update_plot(row_idx, keys=keys)
+            if pane is not None:
+                panes.append(pane)
 
-            cache_key = (
-                tuple(keys),
-                self.normalize_amplitude,
-                self.use_datashade,
-                self.palette_selector.value,
-                self.lock_color_identity.value,
-                self.plot_width,
-                self.plot_height,
-            )
-            cached_row = self._row_render_cache.get(cache_key)
-            if cached_row is not None:
-                panes.append(cached_row)
-                continue
-
-            # Datashade is opt-in, then automatically applied on large rows.
-            use_datashader = self.use_datashade and any(
-                self._curve_data_cache[k].get("n_points", self._get_length(k))
-                > DATASHADE_THRESHOLD
-                for k in keys
-            )
-
-            # Collect raw curves
-            hv_objs = {}
-            for k in keys:
-                payload = self._curve_data_cache[k]
-                xs = payload["x"]
-                ys = (
-                    payload["y_normalized"]
-                    if self.normalize_amplitude
-                    else payload["y"]
-                )
-
-                # Clone with unified vdims for datashading
-                if use_datashader:
-                    unified = hv.Curve(
-                        (xs, ys), kdims=[payload["dim"]], vdims=["amplitude"]
-                    ).opts(
-                        color=self.channel_colors[k],
-                        title=k,
-                    )
-                else:
-                    unified = hv.Curve(
-                        (xs, ys), kdims=[payload["dim"]], vdims=[payload["vdim"]]
-                    ).opts(
-                        color=self.channel_colors[k],
-                        title=k,
-                    )
-                hv_objs[k] = unified
-
-            overlay_raw = hv.NdOverlay(hv_objs, kdims="channel").opts(
-                width=self.plot_width
-            )
-
-            if use_datashader:
-                print(f"Datashading row {row_idx} with channels: {keys}")
-                color_key = {k: self.channel_colors[k] for k in keys}
-                print(color_key)
-
-                shaded = datashade(
-                    overlay_raw,
-                    aggregator="any",
-                    height=self.plot_height,
-                    color_key=color_key,
-                    width=self.plot_width,
-                )
-
-                # Build hover overlay safely
-                if self.show_hover_checkbox.value:
-                    print("Adding a hover overlay does not work yet. Skipping.")
-                #     hover_elems = {}
-                #     for k, obj in hv_objs.items():
-                #         dec = decimate(obj)
-                #         if dec is not None:
-                #             hover_elems[k] = dec.opts(
-                #                 tools=["hover"],
-                #                 line_width=0.0,
-                #                 color=self.channel_colors[k],
-                #             )
-
-                #     if hover_elems:
-                #         hover_overlay = hv.NdOverlay(hover_elems, kdims="channel")
-                #         final = shaded * hover_overlay
-                #     else:
-                #         final = shaded
-                # else:
-                final = shaded
-
-            else:
-                final = overlay_raw
-
-            final = final.opts(frame_width=self.plot_width)
-
-            pane = pn.pane.HoloViews(
-                final,
-                sizing_mode="stretch_width",
-                max_width=self.plot_width_max,
-            )
-            self._row_render_cache[cache_key] = pane
-            panes.append(pane)
-
-        column = pn.Column(
-            *panes,
-            sizing_mode="stretch_width",
-            margin=0,
-            max_width=self.plot_width_max,
-        )
-
-        self.graphs.objects = [column]
+        row_order = tuple(sorted_rows)
+        if row_order != self._active_row_order or len(self.graphs.objects) != len(
+            panes
+        ):
+            self.graphs.objects = panes
+            self._active_row_order = row_order
 
     # =========================================================
     # Clear / reset
@@ -837,6 +845,8 @@ class MTH5Viewer(param.Parameterized):
         self._curve_data_cache = {}
         self._channel_color_indices = {}
         self._row_render_cache = {}
+        self._row_panes = {}
+        self._active_row_order = ()
         self.datashade_cache = {}
         self.subplot_row_assignments = {}
         self.graphs.objects = []
