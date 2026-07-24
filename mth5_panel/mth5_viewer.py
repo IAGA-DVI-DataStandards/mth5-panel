@@ -389,26 +389,26 @@ class MTH5Viewer(param.Parameterized):
         self.subtract_mean = event.new
         if self.data_dict:
             self._build_or_update_plots()
-            self._render_plots()
+            self.update_plots()
 
     def _on_combine_subplots_changed(self, event):
         self.combine_subplots = event.new
-        self._render_plots()
+        self.update_plots()
 
     def _on_palette_changed(self, event=None):
         if self._curve_data_cache:
-            self._render_plots()
+            self.update_plots()
 
     def _on_overlay_hover_changed(self, event):
-        self._render_plots()
+        self.update_plots()
 
     def _on_normalize_changed(self, event):
         self.normalize_amplitude = event.new
-        self._render_plots()
+        self.update_plots()
 
     def _on_use_datashade_changed(self, event):
         self.use_datashade = event.new
-        self._render_plots()
+        self.update_plots()
 
     # =========================================================
     # Data loading and selection
@@ -804,9 +804,10 @@ class MTH5Viewer(param.Parameterized):
             pane.max_width = self.plot_width_max
         return pane
 
-    def _render_plots(self):
+    def update_plots(self):
         if not self._curve_data_cache:
             self.graphs.objects = []
+            self._active_row_order = ()
             return
 
         row_map = {}
@@ -835,6 +836,9 @@ class MTH5Viewer(param.Parameterized):
         ):
             self.graphs.objects = panes
             self._active_row_order = row_order
+
+    def _render_plots(self):
+        self.update_plots()
 
     # =========================================================
     # Clear / reset

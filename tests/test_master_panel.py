@@ -96,23 +96,53 @@ def test_viewer_load_files_calls_refresh(monkeypatch, tmp_path):
     assert viewer.tabs.active == 0
 
 
-def test_viewer_use_datashade_toggle_triggers_render(monkeypatch):
+def test_viewer_use_datashade_toggle_uses_update_plots(monkeypatch):
     pytest.importorskip("holoviews")
     from mth5_panel.mth5_viewer import MTH5Viewer
 
     viewer = MTH5Viewer(use_template=False)
 
-    calls = {"render": 0}
+    calls = {"update": 0, "render": 0}
+
+    def _fake_update():
+        calls["update"] += 1
 
     def _fake_render():
         calls["render"] += 1
 
+    monkeypatch.setattr(viewer, "update_plots", _fake_update)
     monkeypatch.setattr(viewer, "_render_plots", _fake_render)
 
     viewer.use_datashade_checkbox.value = True
 
     assert viewer.use_datashade is True
-    assert calls["render"] == 1
+    assert calls["update"] == 1
+    assert calls["render"] == 0
+
+
+def test_viewer_normalize_callback_uses_update_plots(monkeypatch):
+    pytest.importorskip("holoviews")
+    from mth5_panel.mth5_viewer import MTH5Viewer
+
+    viewer = MTH5Viewer(use_template=False)
+    viewer.data_dict = {"dummy": object()}
+
+    calls = {"update": 0, "render": 0}
+
+    def _fake_update():
+        calls["update"] += 1
+
+    def _fake_render():
+        calls["render"] += 1
+
+    monkeypatch.setattr(viewer, "update_plots", _fake_update)
+    monkeypatch.setattr(viewer, "_render_plots", _fake_render)
+
+    viewer._on_normalize_changed(type("Event", (), {"new": True})())
+
+    assert viewer.normalize_amplitude is True
+    assert calls["update"] == 1
+    assert calls["render"] == 0
 
 
 def test_viewer_datashade_respects_toggle(monkeypatch):
