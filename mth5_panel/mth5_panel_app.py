@@ -108,7 +108,7 @@ class MTH5MasterPanelApp(param.Parameterized):
         )
 
         self.template = pn.template.MaterialTemplate(
-            title="MTH5 Panel",
+            title="",
             header_background="#0b3d5c",
         )
 

@@ -347,7 +347,13 @@ class MTH5Viewer(param.Parameterized):
             margin=0,
             max_width=self.plot_width_max,
         )
-        return pn.Column(self.graphs, sizing_mode="stretch_width")
+        self.plots_card = pn.Card(
+            self.graphs,
+            title="Time Series Plots",
+            sizing_mode="stretch_width",
+            max_width=self.plot_width_max,
+        )
+        return pn.Column(self.plots_card, sizing_mode="stretch_width")
 
     # =========================================================
     # Callbacks / param handlers
@@ -604,13 +610,18 @@ class MTH5Viewer(param.Parameterized):
 
     def _build_curve_payload(self, ch_data, color_index):
         dim = list(ch_data.dims)[0]
+        y = np.asarray(ch_data.values)
+        y_min = float(y.min()) if y.size else 0.0
+        y_ptp = float(np.ptp(y)) if y.size else 0.0
         return {
             "x": np.asarray(ch_data[dim].values),
-            "y": np.asarray(ch_data.values),
+            "y": y,
+            "y_normalized": ((y - y_min) / y_ptp) if y_ptp > 0 else (y * 0),
             "dim": dim,
             "vdim": ch_data.name or "amplitude",
             "units": getattr(ch_data, "units", ""),
             "color_index": color_index,
+            "n_points": int(y.size),
         }
 
     def _make_channel_curve(self, ch_key, payload):
@@ -631,7 +642,7 @@ class MTH5Viewer(param.Parameterized):
             ylabel=payload["units"],
             title=ch_key,
             color=color,
-            tools=["hover"],
+            tools=["hover"] if self.show_hover_checkbox.value else [],
             show_grid=True,
             gridstyle={"grid_line_color": "lightgray", "grid_line_alpha": 0.5},
             xticks=20,
@@ -724,7 +735,9 @@ class MTH5Viewer(param.Parameterized):
 
             # Datashade is opt-in, then automatically applied on large rows.
             use_datashader = self.use_datashade and any(
-                self._get_length(k) > DATASHADE_THRESHOLD for k in keys
+                self._curve_data_cache[k].get("n_points", self._get_length(k))
+                > DATASHADE_THRESHOLD
+                for k in keys
             )
 
             # Collect raw curves
@@ -732,12 +745,11 @@ class MTH5Viewer(param.Parameterized):
             for k in keys:
                 payload = self._curve_data_cache[k]
                 xs = payload["x"]
-                ys = payload["y"]
-
-                if self.normalize_amplitude and np.ptp(ys) > 0:
-                    ys = (ys - ys.min()) / np.ptp(ys)
-                elif self.normalize_amplitude:
-                    ys = ys * 0  # flat line if constant
+                ys = (
+                    payload["y_normalized"]
+                    if self.normalize_amplitude
+                    else payload["y"]
+                )
 
                 # Clone with unified vdims for datashading
                 if use_datashader:
@@ -814,14 +826,7 @@ class MTH5Viewer(param.Parameterized):
             max_width=self.plot_width_max,
         )
 
-        self.graphs.objects = [
-            pn.Card(
-                column,
-                title="Time Series Plots",
-                sizing_mode="stretch_width",
-                max_width=self.plot_width_max,
-            )
-        ]
+        self.graphs.objects = [column]
 
     # =========================================================
     # Clear / reset
@@ -829,6 +834,9 @@ class MTH5Viewer(param.Parameterized):
     def clear_plots(self, event=None):
         self.data_dict = {}
         self.plot_channel_curves = {}
+        self._curve_data_cache = {}
+        self._channel_color_indices = {}
+        self._row_render_cache = {}
         self.datashade_cache = {}
         self.subplot_row_assignments = {}
         self.graphs.objects = []
