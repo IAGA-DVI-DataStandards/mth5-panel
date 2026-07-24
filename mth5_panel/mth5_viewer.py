@@ -128,6 +128,11 @@ class MTH5Viewer(param.Parameterized):
         self._curve_data_cache = {}  # key -> lightweight numeric payload for rendering
         self._channel_color_indices = {}  # key -> stable color index
         self._row_render_cache = {}  # cache of rendered row HoloViews objects
+        self._layout_cache = {}  # cache of full layout objects by state key
+        self._invalidate_cache_next_update = False
+        self._curve_pipes = {}  # key -> hv.streams.Pipe for fast in-place updates
+        self._curve_dynamicmaps = {}  # key -> hv.DynamicMap backed by Pipe
+        self._last_refresh_stats = {}
         self._active_row_order = ()
         self.datashade_cache = {}  # key -> datashaded hv object
 
@@ -173,6 +178,15 @@ class MTH5Viewer(param.Parameterized):
             font_size="13pt",
             title_size="8pt",
             width=50,
+        )
+
+        self.plot_refresh_elapsed = pn.indicators.Number(
+            name="Plot Refresh",
+            value=0.0,
+            format="{value:.3f}s",
+            font_size="13pt",
+            title_size="8pt",
+            width=95,
         )
 
         self.run_or_channel_checkbox = pn.widgets.Checkbox(name="Pick Runs", value=True)
@@ -300,6 +314,7 @@ class MTH5Viewer(param.Parameterized):
         self._sidebar_items = [
             self.cpu_usage,
             self.memory_usage,
+            self.plot_refresh_elapsed,
             self.run_or_channel_checkbox,
             self.calibrate_checkbox,
             self.subtract_mean_checkbox,
@@ -500,7 +515,7 @@ class MTH5Viewer(param.Parameterized):
                     for run_hdf5_path in runs:
                         run = m.from_reference(run_hdf5_path)
                         run_ts = run.to_runts()
-                        if self.calibrate_checkbox:
+                        if self.calibrate_checkbox.value:
                             run_ts.calibrate()
                         data = run_ts.dataset
                         run_key = (
@@ -590,6 +605,7 @@ class MTH5Viewer(param.Parameterized):
         self._curve_data_cache = {}
         self._channel_color_indices = {}
         self._row_render_cache = {}
+        self._layout_cache = {}
         keys = list(self.data_dict.keys())
 
         for idx, key in enumerate(keys):
@@ -619,6 +635,7 @@ class MTH5Viewer(param.Parameterized):
 
         self._refresh_channel_colors()
         self._init_row_assignments()
+        self._sync_stream_curves()
         t2 = time.perf_counter(), time.process_time()
         print(f" Plots generated in: {t2[0] - t1[0]:.2f} seconds")
 
@@ -630,6 +647,75 @@ class MTH5Viewer(param.Parameterized):
         self.channel_colors = {}
         for ch_key, color_index in self._channel_color_indices.items():
             self.channel_colors[ch_key] = self._get_channel_color(ch_key, color_index)
+
+    def _sync_stream_curves(self):
+        active_keys = set(self._curve_data_cache.keys())
+
+        for key in list(self._curve_pipes.keys()):
+            if key not in active_keys:
+                self._curve_pipes.pop(key, None)
+                self._curve_dynamicmaps.pop(key, None)
+
+        for key in active_keys:
+            if key not in self._curve_pipes or key not in self._curve_dynamicmaps:
+                self._create_stream_curve(key)
+
+    def _create_stream_curve(self, ch_key):
+        payload = self._curve_data_cache[ch_key]
+        y = payload["y_normalized"] if self.normalize_amplitude else payload["y"]
+        pipe = hv.streams.Pipe(data=(payload["x"], y))
+
+        def _curve_from_stream(data, _key=ch_key):
+            active_payload = self._curve_data_cache.get(_key)
+            if active_payload is None:
+                return empty_curve()
+
+            if data is None:
+                ys = (
+                    active_payload["y_normalized"]
+                    if self.normalize_amplitude
+                    else active_payload["y"]
+                )
+                data = (active_payload["x"], ys)
+
+            return hv.Curve(
+                data,
+                kdims=[active_payload["dim"]],
+                vdims=[active_payload["vdim"]],
+            ).opts(
+                height=self.plot_height,
+                ylabel=active_payload["units"],
+                title=_key,
+                color=self.channel_colors.get(_key, "#4477AA"),
+                tools=["hover"] if self.show_hover_checkbox.value else [],
+                show_grid=True,
+                gridstyle={"grid_line_color": "lightgray", "grid_line_alpha": 0.5},
+                xticks=20,
+            )
+
+        self._curve_pipes[ch_key] = pipe
+        self._curve_dynamicmaps[ch_key] = hv.DynamicMap(
+            _curve_from_stream, streams=[pipe]
+        )
+
+    def _fast_stream_value_update(self):
+        if not self._curve_data_cache:
+            return False
+        if self.use_datashade:
+            return False
+
+        self._sync_stream_curves()
+        if not self._curve_pipes:
+            return False
+
+        for key, payload in self._curve_data_cache.items():
+            pipe = self._curve_pipes.get(key)
+            if pipe is None:
+                continue
+            ys = payload["y_normalized"] if self.normalize_amplitude else payload["y"]
+            pipe.send((payload["x"], ys))
+
+        return True
 
     def _build_curve_payload(self, ch_data, color_index):
         dim = list(ch_data.dims)[0]
@@ -736,6 +822,21 @@ class MTH5Viewer(param.Parameterized):
             self.plot_height,
         )
 
+    def _get_layout_cache_key(self):
+        row_items = tuple(
+            sorted((k, int(v)) for k, v in self.subplot_row_assignments.items())
+        )
+        return (
+            row_items,
+            self.normalize_amplitude,
+            self.use_datashade,
+            self.palette_selector.value,
+            self.lock_color_identity.value,
+            self.show_hover_checkbox.value,
+            self.plot_width,
+            self.plot_height,
+        )
+
     def _build_row_plot(self, row_idx, keys):
         cache_key = self._get_row_cache_key(keys)
         cached_final = self._row_render_cache.get(cache_key)
@@ -761,14 +862,13 @@ class MTH5Viewer(param.Parameterized):
                     color=self.channel_colors[k],
                     title=k,
                 )
+                hv_objs[k] = unified
             else:
-                unified = hv.Curve(
-                    (xs, ys), kdims=[payload["dim"]], vdims=[payload["vdim"]]
-                ).opts(
-                    color=self.channel_colors[k],
-                    title=k,
-                )
-            hv_objs[k] = unified
+                stream_curve = self._curve_dynamicmaps.get(k)
+                if stream_curve is None:
+                    self._create_stream_curve(k)
+                    stream_curve = self._curve_dynamicmaps[k]
+                hv_objs[k] = stream_curve
 
         overlay_raw = hv.NdOverlay(hv_objs, kdims="channel")
 
@@ -797,6 +897,11 @@ class MTH5Viewer(param.Parameterized):
         return final
 
     def _compose_layout(self):
+        layout_cache_key = self._get_layout_cache_key()
+        cached_layout = self._layout_cache.get(layout_cache_key)
+        if cached_layout is not None:
+            return cached_layout, self._active_row_order
+
         row_map = {}
         for key, row_idx in self.subplot_row_assignments.items():
             row_map.setdefault(row_idx, []).append(key)
@@ -816,6 +921,8 @@ class MTH5Viewer(param.Parameterized):
             layout = hv.Layout(row_plots).cols(1).opts(shared_axes=True)
         else:
             layout = empty_curve()
+
+        self._layout_cache[layout_cache_key] = layout
 
         return layout, row_order
 
@@ -842,7 +949,7 @@ class MTH5Viewer(param.Parameterized):
             self._active_row_order = ()
             return
 
-        self._row_render_cache = {}
+        self._invalidate_plot_caches()
         layout, row_order = self._compose_layout()
         self.plot_pane.object = layout
         self._active_row_order = row_order
@@ -856,10 +963,17 @@ class MTH5Viewer(param.Parameterized):
             self._active_row_order = ()
             return
 
-        self._row_render_cache = {}
+        if self._invalidate_cache_next_update:
+            self._invalidate_plot_caches()
+            self._invalidate_cache_next_update = False
+
         layout, row_order = self._compose_layout()
         self.plot_pane.object = layout
         self._active_row_order = row_order
+
+    def _invalidate_plot_caches(self):
+        self._row_render_cache = {}
+        self._layout_cache = {}
 
     def _update_plot_values(self, reload_data=False):
         """
@@ -890,8 +1004,32 @@ class MTH5Viewer(param.Parameterized):
                 for i, k in enumerate(missing, start=1):
                     self.subplot_row_assignments[k] = start_row + i
 
-        self._update_subplot_row_selectors()
-        self.update_plots()
+        keys_changed = set(previous_assignments.keys()) != set(
+            self._curve_data_cache.keys()
+        )
+
+        if keys_changed:
+            self._update_subplot_row_selectors()
+            self._invalidate_plot_caches()
+            self.update_plots()
+            return
+
+        self._refresh_plots(reason="values_changed")
+
+    def _record_refresh_timing(self, reason, mode, start_time):
+        elapsed = time.perf_counter() - start_time
+        self.plot_refresh_elapsed.value = elapsed
+        self._last_refresh_stats = {
+            "reason": reason,
+            "mode": mode,
+            "seconds": elapsed,
+            "channels": len(self._curve_data_cache),
+            "rows": len({int(v) for v in self.subplot_row_assignments.values()}),
+        }
+        print(
+            f" [plot-refresh] reason={reason} mode={mode} elapsed={elapsed:.3f}s "
+            f"channels={self._last_refresh_stats['channels']} rows={self._last_refresh_stats['rows']}"
+        )
 
     def _refresh_plots(self, reason="values_changed"):
         """
@@ -901,25 +1039,40 @@ class MTH5Viewer(param.Parameterized):
         - style_changed: update colors/tools/datashade state
         - layout_changed: row assignments or combine mode changed
         """
+        t0 = time.perf_counter()
+
         if reason == "data_changed":
             self._prepare_plot_payloads()
             self._initialize_plots()
+            self._record_refresh_timing(reason, "reinitialize", t0)
             return
 
         if reason == "values_changed":
+            if self._fast_stream_value_update():
+                self._record_refresh_timing(reason, "stream-update", t0)
+                return
+            self._invalidate_cache_next_update = False
             self.update_plots()
+            self._record_refresh_timing(reason, "layout-cache", t0)
             return
 
         if reason == "style_changed":
             self._refresh_channel_colors()
+            self._fast_stream_value_update()
+            self._invalidate_cache_next_update = True
             self.update_plots()
+            self._record_refresh_timing(reason, "style-rebuild", t0)
             return
 
         if reason == "layout_changed":
+            self._invalidate_cache_next_update = True
             self.update_plots()
+            self._record_refresh_timing(reason, "layout-rebuild", t0)
             return
 
+        self._invalidate_cache_next_update = True
         self.update_plots()
+        self._record_refresh_timing(reason, "fallback-rebuild", t0)
 
     def _render_plots(self):
         self._refresh_plots(reason="values_changed")
@@ -933,6 +1086,9 @@ class MTH5Viewer(param.Parameterized):
         self._curve_data_cache = {}
         self._channel_color_indices = {}
         self._row_render_cache = {}
+        self._layout_cache = {}
+        self._curve_pipes = {}
+        self._curve_dynamicmaps = {}
         self._active_row_order = ()
         self.datashade_cache = {}
         self.subplot_row_assignments = {}
