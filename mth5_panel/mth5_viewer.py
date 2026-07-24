@@ -130,6 +130,7 @@ class MTH5Viewer(param.Parameterized):
         self._row_render_cache = {}  # cache of rendered row HoloViews objects
         self._layout_cache = {}  # cache of full layout objects by state key
         self._invalidate_cache_next_update = False
+        self._force_rescale_next_update = False
         self._curve_pipes = {}  # key -> hv.streams.Pipe for fast in-place updates
         self._curve_dynamicmaps = {}  # key -> hv.DynamicMap backed by Pipe
         self._last_refresh_stats = {}
@@ -436,6 +437,8 @@ class MTH5Viewer(param.Parameterized):
     def _on_normalize_changed(self, event):
         self.normalize_amplitude = event.new
         if self._curve_data_cache or self.data_dict:
+            # Normalization changes value scale, so force one range recompute pass.
+            self._force_rescale_next_update = True
             self._refresh_plots(reason="values_changed")
 
     def _on_use_datashade_changed(self, event):
@@ -849,13 +852,17 @@ class MTH5Viewer(param.Parameterized):
             for k in keys
         )
 
-        hv_objs = {}
-        for k in keys:
-            payload = self._curve_data_cache[k]
-            xs = payload["x"]
-            ys = payload["y_normalized"] if self.normalize_amplitude else payload["y"]
+        if use_datashader:
+            hv_objs = {}
+            for k in keys:
+                payload = self._curve_data_cache[k]
+                xs = payload["x"]
+                ys = (
+                    payload["y_normalized"]
+                    if self.normalize_amplitude
+                    else payload["y"]
+                )
 
-            if use_datashader:
                 unified = hv.Curve(
                     (xs, ys), kdims=[payload["dim"]], vdims=["amplitude"]
                 ).opts(
@@ -863,14 +870,28 @@ class MTH5Viewer(param.Parameterized):
                     title=k,
                 )
                 hv_objs[k] = unified
-            else:
+
+            if not hv_objs:
+                return empty_curve()
+
+            overlay_raw = hv.NdOverlay(hv_objs, kdims="channel")
+        else:
+            overlays = []
+            for k in keys:
                 stream_curve = self._curve_dynamicmaps.get(k)
                 if stream_curve is None:
                     self._create_stream_curve(k)
-                    stream_curve = self._curve_dynamicmaps[k]
-                hv_objs[k] = stream_curve
+                    stream_curve = self._curve_dynamicmaps.get(k)
+                if stream_curve is None:
+                    continue
+                overlays.append(stream_curve.relabel(k))
 
-        overlay_raw = hv.NdOverlay(hv_objs, kdims="channel")
+            if not overlays:
+                return empty_curve()
+
+            overlay_raw = overlays[0]
+            for stream_overlay in overlays[1:]:
+                overlay_raw = overlay_raw * stream_overlay
 
         if use_datashader:
             print(f"Datashading row {row_idx} with channels: {keys}")
@@ -891,7 +912,8 @@ class MTH5Viewer(param.Parameterized):
 
         final = final.opts(
             frame_width=min(self.plot_width, self.plot_width_max),
-            responsive=True,
+            framewise=True,
+            axiswise=True,
         )
         self._row_render_cache[cache_key] = final
         return final
@@ -1049,10 +1071,17 @@ class MTH5Viewer(param.Parameterized):
 
         if reason == "values_changed":
             if self._fast_stream_value_update():
+                if self._force_rescale_next_update:
+                    self._force_rescale_next_update = False
+                    self._invalidate_cache_next_update = True
+                    self.update_plots()
+                    self._record_refresh_timing(reason, "stream-update+rescale", t0)
+                    return
                 self._record_refresh_timing(reason, "stream-update", t0)
                 return
             self._invalidate_cache_next_update = False
             self.update_plots()
+            self._force_rescale_next_update = False
             self._record_refresh_timing(reason, "layout-cache", t0)
             return
 
