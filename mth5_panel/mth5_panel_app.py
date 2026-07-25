@@ -9,14 +9,18 @@ import panel as pn
 
 try:
     from .make_mth5 import MakeMTH5PanelApp
+    from .mth5_viewer import MTH5Viewer
 except ImportError:  # pragma: no cover - supports running file directly via panel serve
     module_dir = Path(__file__).resolve().parent
     if str(module_dir) not in sys.path:
         sys.path.insert(0, str(module_dir))
     from make_mth5 import MakeMTH5PanelApp
+    from mth5_viewer import MTH5Viewer
 
-if TYPE_CHECKING:
-    from mth5_panel.mth5_viewer import MTH5Viewer
+    # Ensure old viewer is not imported
+
+# if TYPE_CHECKING:
+#     from mth5_panel.mth5_viewer import MTH5Viewer
 
 pn.extension("tabulator", sizing_mode="stretch_width")
 

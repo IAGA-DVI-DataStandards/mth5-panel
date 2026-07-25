@@ -73,7 +73,7 @@ def test_master_handoff_loads_viewer_and_switches_tabs(tmp_path):
 
 def test_viewer_load_files_calls_refresh(monkeypatch, tmp_path):
     pytest.importorskip("holoviews")
-    from mth5_panel.mth5_viewer import MTH5Viewer
+    from mth5_panel.mth5_viewer_old import MTH5Viewer
 
     viewer = MTH5Viewer(use_template=False)
     input_file = tmp_path / "input.h5"
@@ -98,7 +98,7 @@ def test_viewer_load_files_calls_refresh(monkeypatch, tmp_path):
 
 def test_viewer_use_datashade_toggle_uses_update_plots(monkeypatch):
     pytest.importorskip("holoviews")
-    from mth5_panel.mth5_viewer import MTH5Viewer
+    from mth5_panel.mth5_viewer_old import MTH5Viewer
 
     viewer = MTH5Viewer(use_template=False)
 
@@ -122,7 +122,7 @@ def test_viewer_use_datashade_toggle_uses_update_plots(monkeypatch):
 
 def test_viewer_normalize_callback_uses_update_plots(monkeypatch):
     pytest.importorskip("holoviews")
-    from mth5_panel.mth5_viewer import MTH5Viewer
+    from mth5_panel.mth5_viewer_old import MTH5Viewer
 
     viewer = MTH5Viewer(use_template=False)
     viewer.data_dict = {"dummy": object()}
@@ -147,7 +147,7 @@ def test_viewer_normalize_callback_uses_update_plots(monkeypatch):
 
 def test_viewer_calibrate_callback_updates_values(monkeypatch):
     pytest.importorskip("holoviews")
-    from mth5_panel.mth5_viewer import MTH5Viewer
+    from mth5_panel.mth5_viewer_old import MTH5Viewer
 
     viewer = MTH5Viewer(use_template=False)
     viewer.data_dict = {"dummy": object()}
@@ -166,7 +166,7 @@ def test_viewer_calibrate_callback_updates_values(monkeypatch):
 
 def test_viewer_datashade_respects_toggle(monkeypatch):
     pytest.importorskip("holoviews")
-    from mth5_panel import mth5_viewer as viewer_mod
+    from mth5_panel import mth5_viewer_old as viewer_mod
 
     viewer = viewer_mod.MTH5Viewer(use_template=False)
     key = "survey.station.run.ex"
@@ -208,7 +208,7 @@ def test_viewer_datashade_respects_toggle(monkeypatch):
 
 def test_viewer_update_plot_returns_row_plot():
     pytest.importorskip("holoviews")
-    from mth5_panel.mth5_viewer import MTH5Viewer
+    from mth5_panel.mth5_viewer_old import MTH5Viewer
 
     viewer = MTH5Viewer(use_template=False)
     key = "survey.station.run.ex"
@@ -235,7 +235,7 @@ def test_viewer_update_plot_returns_row_plot():
 def test_viewer_update_plots_updates_shared_plot_pane():
     pytest.importorskip("holoviews")
     import holoviews as hv
-    from mth5_panel.mth5_viewer import MTH5Viewer
+    from mth5_panel.mth5_viewer_old import MTH5Viewer
 
     viewer = MTH5Viewer(use_template=False)
     key = "survey.station.run.ex"
