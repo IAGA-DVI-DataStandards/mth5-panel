@@ -33,8 +33,9 @@ def test_dataset_to_channel_arrays_and_payloads():
         channels, TransformConfig(subtract_mean=True, normalize_amplitude=True)
     )
     assert payloads["s.st.r.ex"]["n_points"] == 10
-    assert np.all(payloads["s.st.r.ex"]["y_normalized"] >= 0.0)
-    assert np.all(payloads["s.st.r.ex"]["y_normalized"] <= 1.0)
+    yn = payloads["s.st.r.ex"]["y_normalized"]
+    assert np.all(np.isfinite(yn))
+    assert np.all(np.abs(yn) <= 1.0)
 
 
 def test_lod_renderer_reduces_dense_curve():

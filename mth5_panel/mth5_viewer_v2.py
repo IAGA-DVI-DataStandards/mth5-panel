@@ -3,6 +3,7 @@ from __future__ import annotations
 import pathlib
 import sys
 import time
+import psutil
 
 import colorcet as cc
 import holoviews as hv
@@ -127,13 +128,32 @@ class MTH5ViewerV2(param.Parameterized):
 
     def _init_widgets(self):
         self.cpu_usage = pn.indicators.Number(
-            name="CPU", value=0, format="{value}%", width=60
+            name="CPU",
+            value=0,
+            format="{value}%",
+            colors=[(50, "green"), (75, "orange"), (100, "red")],
+            font_size="12pt",
+            title_size="14pt",
+            width=50,
         )
+
         self.memory_usage = pn.indicators.Number(
-            name="Memory", value=0, format="{value}%", width=70
+            name="Memory",
+            value=0,
+            format="{value}%",
+            colors=[(50, "green"), (75, "orange"), (100, "red")],
+            font_size="12pt",
+            title_size="14pt",
+            width=50,
         )
+
         self.plot_refresh_elapsed = pn.indicators.Number(
-            name="Plot Refresh", value=0.0, format="{value:.3f}s", width=95
+            name="Render Time",
+            value=0.0,
+            format="{value:.3f} s",
+            font_size="12pt",
+            title_size="14pt",
+            width=150,
         )
 
         self.files = pn.widgets.FileSelector(
@@ -205,6 +225,8 @@ class MTH5ViewerV2(param.Parameterized):
 
         self.selected_runs = {}
 
+        self._start_resource_stream()
+
     def _build_sidebar(self):
         self._sidebar_items = [
             self.cpu_usage,
@@ -241,6 +263,18 @@ class MTH5ViewerV2(param.Parameterized):
             max_width=self.plot_width_max,
         )
         return pn.Column(plots_card, sizing_mode="stretch_width")
+
+    # =========================================================
+    # Resource Streaming
+    # =========================================================
+    def _start_resource_stream(self):
+        def update_resources():
+            mem = psutil.virtual_memory().percent
+            cpu = psutil.cpu_percent()
+            self.cpu_usage.value = cpu
+            self.memory_usage.value = mem
+
+        pn.state.add_periodic_callback(update_resources, period=1000)
 
     def _on_files_changed(self, event):
         if not event.new:
@@ -400,7 +434,7 @@ class MTH5ViewerV2(param.Parameterized):
 
 
 def build_app():
-    return MTH5ViewerV2(plot_width=950, plot_height=220).view()
+    return MTH5ViewerV2(plot_width=750, plot_height=220).view()
 
 
 if __name__.startswith("bokeh_app") or __name__ == "__main__":

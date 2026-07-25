@@ -14,7 +14,7 @@ class TransformConfig:
 
 
 def _safe_normalize(y: np.ndarray) -> np.ndarray:
-    return y / abs(y).max() if y.size else y
+    return y / np.nanmax(np.abs(y)) if y.size else y
 
 
 def dataset_to_channel_arrays(data_dict: Dict[str, xr.Dataset]) -> Dict[str, dict]:
@@ -44,8 +44,7 @@ def _safe_subtract_mean(y: np.ndarray) -> np.ndarray:
     """Subtract the mean from y, returning a new array."""
     if y.size == 0:
         return y.copy()
-    mean_value = float(y.mean())
-    print(mean_value)
+    mean_value = float(np.nanmean(y))
     return y - mean_value
 
 

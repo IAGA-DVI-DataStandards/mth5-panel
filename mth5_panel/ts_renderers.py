@@ -12,6 +12,7 @@ from holoviews.operation.datashader import datashade
 class RenderConfig:
     plot_height: int = 220
     plot_width: int = 900
+    legend_height: int = 50
     lod_target_points: int = 6_000
     datashade_threshold: int = 2_000_000
     normalize_amplitude: bool = False
@@ -101,6 +102,47 @@ class LODRenderer:
             xticks=12,
         )
 
+    def _build_legend_strip(self, keys: list[str], cfg: RenderConfig):
+        """Build a compact legend-only row independent of data source lengths."""
+        legend_curves = []
+        for key in keys:
+            legend_curves.append(
+                hv.Curve(
+                    ([0.0, 1.0], [0.0, 0.0]), kdims=["legend_x"], vdims=["legend_y"]
+                )
+                .relabel(key)
+                .opts(
+                    color=self.color_lookup.get(key, "#4477AA"),
+                    line_width=2,
+                )
+            )
+
+        if not legend_curves:
+            return hv.Curve(([], []))
+
+        legend_overlay = hv.Overlay(legend_curves)
+        return legend_overlay.opts(
+            show_frame=False,
+            xaxis=None,
+            yaxis=None,
+            toolbar=None,
+            title="",
+            height=cfg.legend_height,
+            frame_height=cfg.legend_height,
+            frame_width=cfg.plot_width,
+            show_legend=True,
+            legend_position="top_left",
+            legend_opts={
+                "orientation": "horizontal",
+                "label_text_font_size": "10pt",
+                "spacing": 12,
+            },
+            # Keep renderer glyphs for legend entries but move them out of view.
+            ylim=(1, 2),
+            framewise=False,
+            axiswise=False,
+        )
+
     def build_row_plot(
         self, keys: list[str], payloads: Dict[str, dict], cfg: RenderConfig
     ):
@@ -121,28 +163,50 @@ class LODRenderer:
         if not curves:
             return hv.Curve(([], []))
 
-        overlay = hv.NdOverlay(curves, kdims="channel")
+        overlay_for_datashade = hv.NdOverlay(curves, kdims="channel")
+        overlay_curves = hv.Overlay([curve.relabel(k) for k, curve in curves.items()])
         if use_datashade:
             color_key = {k: self.color_lookup.get(k, "#4477AA") for k in curves}
             plot = datashade(
-                overlay,
+                overlay_for_datashade,
                 aggregator="any",
                 height=cfg.plot_height,
                 width=cfg.plot_width,
                 color_key=color_key,
             )
         else:
-            plot = overlay.opts(
-                legend_position="top",
-                legend_cols=max(1, len(curves)),
-                show_legend=True,
+            if len(curves) > 1:
+                legend_strip = self._build_legend_strip(list(curves.keys()), cfg)
+                plot_only = overlay_curves.opts(
+                    title="",
+                    show_legend=False,
+                    frame_width=cfg.plot_width,
+                    frame_height=cfg.plot_height,
+                    height=cfg.plot_height,
+                    framewise=True,
+                    axiswise=True,
+                )
+                plot = (legend_strip + plot_only).cols(1)
+            else:
+                plot = overlay_curves.opts(
+                    title="",
+                    show_legend=False,
+                    frame_width=cfg.plot_width,
+                    frame_height=cfg.plot_height,
+                    height=cfg.plot_height,
+                    framewise=True,
+                    axiswise=True,
+                )
+
+        if use_datashade:
+            return plot.opts(
+                frame_width=cfg.plot_width,
+                frame_height=cfg.plot_height,
+                framewise=True,
+                axiswise=True,
             )
 
-        return plot.opts(
-            frame_width=cfg.plot_width,
-            framewise=True,
-            axiswise=True,
-        )
+        return plot
 
     def build_layout(
         self,
