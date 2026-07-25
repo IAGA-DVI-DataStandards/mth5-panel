@@ -331,7 +331,7 @@ class MTH5ViewerV2(param.Parameterized):
     def _render_config(self) -> RenderConfig:
         return RenderConfig(
             plot_height=self.plot_height,
-            plot_width=min(self.plot_width, self.plot_width_max),
+            plot_width=self.plot_width_max,
             lod_target_points=self.lod_slider.value,
             datashade_threshold=self.datashade_threshold_input.value,
             normalize_amplitude=self.normalize_checkbox.value,
@@ -400,7 +400,7 @@ class MTH5ViewerV2(param.Parameterized):
 
 
 def build_app():
-    return MTH5ViewerV2(plot_width=700, plot_height=220).view()
+    return MTH5ViewerV2(plot_width=950, plot_height=220).view()
 
 
 if __name__.startswith("bokeh_app") or __name__ == "__main__":

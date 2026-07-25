@@ -14,11 +14,7 @@ class TransformConfig:
 
 
 def _safe_normalize(y: np.ndarray) -> np.ndarray:
-    y_min = float(y.min()) if y.size else 0.0
-    y_ptp = float(np.ptp(y)) if y.size else 0.0
-    if y_ptp <= 0:
-        return y * 0
-    return (y - y_min) / y_ptp
+    return y / abs(y).max() if y.size else y
 
 
 def dataset_to_channel_arrays(data_dict: Dict[str, xr.Dataset]) -> Dict[str, dict]:
@@ -44,6 +40,15 @@ def dataset_to_channel_arrays(data_dict: Dict[str, xr.Dataset]) -> Dict[str, dic
     return channels
 
 
+def _safe_subtract_mean(y: np.ndarray) -> np.ndarray:
+    """Subtract the mean from y, returning a new array."""
+    if y.size == 0:
+        return y.copy()
+    mean_value = float(y.mean())
+    print(mean_value)
+    return y - mean_value
+
+
 def build_plot_payloads(
     channel_arrays: Dict[str, dict], config: TransformConfig
 ) -> Dict[str, dict]:
@@ -52,8 +57,8 @@ def build_plot_payloads(
 
     for key, item in channel_arrays.items():
         y = item["y_raw"]
-        if config.subtract_mean and y.size:
-            y = y - y.mean()
+        if config.subtract_mean:
+            y = _safe_subtract_mean(y)
 
         payloads[key] = {
             "x": item["x"],
