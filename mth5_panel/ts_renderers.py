@@ -129,7 +129,7 @@ class LODRenderer:
             title="",
             height=cfg.legend_height,
             frame_height=cfg.legend_height,
-            frame_width=cfg.plot_width,
+            responsive=True,
             show_legend=True,
             legend_position="top_left",
             legend_opts={
@@ -171,7 +171,6 @@ class LODRenderer:
                 overlay_for_datashade,
                 aggregator="any",
                 height=cfg.plot_height,
-                width=cfg.plot_width,
                 color_key=color_key,
             )
         else:
@@ -180,9 +179,9 @@ class LODRenderer:
                 plot_only = overlay_curves.opts(
                     title="",
                     show_legend=False,
-                    frame_width=cfg.plot_width,
                     frame_height=cfg.plot_height,
                     height=cfg.plot_height,
+                    responsive=True,
                     framewise=True,
                     axiswise=True,
                 )
@@ -191,17 +190,17 @@ class LODRenderer:
                 plot = overlay_curves.opts(
                     title="",
                     show_legend=False,
-                    frame_width=cfg.plot_width,
                     frame_height=cfg.plot_height,
                     height=cfg.plot_height,
+                    responsive=True,
                     framewise=True,
                     axiswise=True,
                 )
 
         if use_datashade:
             return plot.opts(
-                frame_width=cfg.plot_width,
                 frame_height=cfg.plot_height,
+                responsive=True,
                 framewise=True,
                 axiswise=True,
             )
