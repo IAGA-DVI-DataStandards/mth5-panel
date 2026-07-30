@@ -1,22 +1,18 @@
 import pathlib
+import time
+
+import colorcet as cc
+import holoviews as hv
+import numpy as np
 import pandas as pd
 import panel as pn
 import param
 import psutil
 import xarray
-import numpy as np
-
-import holoviews as hv
-import hvplot.xarray
-from holoviews.operation.datashader import datashade
-from holoviews.operation import decimate
-import colorcet as cc
 from bokeh.palettes import Viridis256
-
-from mth5.mth5 import MTH5
+from holoviews.operation.datashader import datashade
 from mth5 import CHANNEL_DTYPE, RUN_SUMMARY_DTYPE
-
-import time
+from mth5.mth5 import MTH5
 
 pn.extension("tabulator", sizing_mode="stretch_width")
 hv.extension("bokeh")

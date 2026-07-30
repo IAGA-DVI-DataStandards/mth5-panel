@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-import param
 import panel as pn
+import param
 
 try:
     from .make_mth5 import MakeMTH5PanelApp

@@ -235,6 +235,7 @@ def test_viewer_update_plot_returns_row_plot():
 def test_viewer_update_plots_updates_shared_plot_pane():
     pytest.importorskip("holoviews")
     import holoviews as hv
+
     from mth5_panel.mth5_viewer_old import MTH5Viewer
 
     viewer = MTH5Viewer(use_template=False)

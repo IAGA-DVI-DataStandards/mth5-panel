@@ -6,7 +6,6 @@ from typing import Dict, Iterable, Tuple
 
 import pandas as pd
 import xarray as xr
-
 from mth5 import CHANNEL_DTYPE, RUN_SUMMARY_DTYPE
 from mth5.mth5 import MTH5
 
