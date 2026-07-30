@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 
-from mth5_panel.mth5_viewer_v2 import MTH5ViewerV2
+from mth5_panel.mth5_viewer import MTH5Viewer
 from mth5_panel.ts_renderers import LODRenderer, RenderConfig
 from mth5_panel.ts_transforms import (
     TransformConfig,
@@ -72,7 +72,7 @@ def test_lod_renderer_reduces_dense_curve():
 
 
 def test_viewer_v2_refresh_plot_from_channel_arrays():
-    viewer = MTH5ViewerV2(use_template=False)
+    viewer = MTH5Viewer(use_template=False)
     time = np.arange(0, 1000)
     ds = xr.Dataset(
         {
