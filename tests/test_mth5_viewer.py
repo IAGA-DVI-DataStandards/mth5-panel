@@ -6,9 +6,9 @@ import xarray as xr
 from mth5_panel.mth5_viewer import MTH5Viewer
 from mth5_panel.ts_renderers import LODRenderer, RenderConfig
 from mth5_panel.ts_transforms import (
-    TransformConfig,
     build_plot_payloads,
     dataset_to_channel_arrays,
+    TransformConfig,
 )
 
 

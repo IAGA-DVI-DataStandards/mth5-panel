@@ -3,22 +3,22 @@ from __future__ import annotations
 import pathlib
 import sys
 import time
-import psutil
 
 import colorcet as cc
 import holoviews as hv
 import pandas as pd
 import panel as pn
 import param
+import psutil
 from bokeh.palettes import Viridis256
 
 try:
     from .ts_data_store import MTDataStore
     from .ts_renderers import LODRenderer, RenderConfig
     from .ts_transforms import (
-        TransformConfig,
         build_plot_payloads,
         dataset_to_channel_arrays,
+        TransformConfig,
     )
 except ImportError:
     # Support direct execution via: panel serve mth5_viewer_v2.py
@@ -28,9 +28,9 @@ except ImportError:
     from ts_data_store import MTDataStore
     from ts_renderers import LODRenderer, RenderConfig
     from ts_transforms import (
-        TransformConfig,
         build_plot_payloads,
         dataset_to_channel_arrays,
+        TransformConfig,
     )
 
 pn.extension("tabulator", sizing_mode="stretch_width")

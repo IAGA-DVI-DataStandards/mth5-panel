@@ -10,14 +10,13 @@ from __future__ import annotations
 
 import io
 import json
-from html import escape
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
+from html import escape
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import param
-
 from mth5 import logger as mth5_logger
 from mth5.clients.make_mth5 import MakeMTH5
 
