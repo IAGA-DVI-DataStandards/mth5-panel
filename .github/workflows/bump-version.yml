@@ -77,7 +77,7 @@ jobs:
 
       - name: Commit and push changes to PR branch
         run: |
-          git add pyproject.toml mth5-panel/__init__.py README.md
+          git add pyproject.toml mth5_panel/__init__.py README.md
           git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]" || echo "No changes to commit"
           git push origin HEAD:${{ github.head_ref }}
 
