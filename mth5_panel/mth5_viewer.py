@@ -254,13 +254,14 @@ class MTH5Viewer(param.Parameterized):
 
     def _make_plots_tab(self):
         self.plot_pane = pn.pane.HoloViews(
-            empty_curve(), sizing_mode="stretch_both", max_width=self.plot_width_max
+            empty_curve(),
+            sizing_mode="stretch_both",  # max_width=self.plot_width_max
         )
         plots_card = pn.Card(
             self.plot_pane,
             title="Time Series Plots",
             sizing_mode="stretch_width",
-            max_width=self.plot_width_max,
+            # max_width=self.plot_width_max,
         )
         return pn.Column(plots_card, sizing_mode="stretch_width")
 
