@@ -45,3 +45,17 @@ where = ["."]
 
 [tool.setuptools.package-data]
 mth5_panel = ["assets/*.png"]
+
+[tool.bumpversion]
+current_version = "0.0.1"
+commit = true
+tag = true
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+
+[[tool.bumpversion.files]]
+filename = "mth5_panel/__init__.py"
+
+[[tool.bumpversion.files]]
+filename = "README.md"

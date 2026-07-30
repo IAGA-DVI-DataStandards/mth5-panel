@@ -3,13 +3,11 @@ from .mth5_viewer import MTH5Viewer
 from .ts_data_store import MTDataStore
 from .ts_renderers import LODRenderer
 
-# Keep backward compatibility for callers importing MTH5ViewerV2.
-MTH5ViewerV2 = MTH5Viewer
+__version__ = "0.0.1"
 
 __all__ = [
     "MakeMTH5PanelApp",
     "MTH5Viewer",
-    "MTH5ViewerV2",
     "MTDataStore",
     "LODRenderer",
 ]
