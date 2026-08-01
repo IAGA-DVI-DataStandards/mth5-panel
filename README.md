@@ -56,34 +56,34 @@ Contributions are welcome.
 4. Open a pull request: https://github.com/IAGA-DVI-DataStandards/mth5-panel/pulls
 5. Link the related issue and explain what changed and why.
 
+## Install Package
+
+```bash
+pip install mth5-panel
+```
+
 ## Serve
 
-You can run the Panel apps in multiple ways.
+You can run the Panel apps in multiple ways.  First install the package:
 
-### 1) Installed launcher
+
+
+### 1) Script
 
 Install the package, then run the app launcher:
 
 ```bash
-pip install -e .
 mth5-panel-app --show
 ```
 
-This launches the unified MTH5 create/view application through the installable
-script and avoids using a generic `serve` command name.
+This launches the unified MTH5 create/view application through the installable script.
 
 ### 2) Command line
 
-Use `panel serve` directly against an app script:
+Use `panel serve` directly against an app script, best if `mth5-panel` is installed into a local directory using `pip intall -e .`:
 
 ```bash
 panel serve mth5_panel/mth5_panel_app.py --show
-```
-
-You can also serve other app entry files in this package, for example:
-
-```bash
-panel serve mth5_panel/make_mth5.py --show
 ```
 
 ### 3) Jupyter notebook
@@ -96,8 +96,7 @@ import panel as pn
 pn.extension()
 ```
 
-Then import or build a Panel object from one of the app modules and display it
-in a notebook cell.
+Then import or build a Panel object from one of the app modules and display it in a notebook cell.
 
 ### 4) VS Code
 
@@ -109,8 +108,7 @@ in a notebook cell.
 panel serve mth5_panel/mth5_panel_app.py --autoreload --show
 ```
 
-VS Code will show the local server URL in the terminal output; open it in your
-browser to use the application.
+VS Code will show the local server URL in the terminal output; open it in your browser to use the application.
 
 
 
