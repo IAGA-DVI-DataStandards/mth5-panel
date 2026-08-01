@@ -28,5 +28,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[test]
 
+      - name: Smoke test installed launcher
+        run: mth5-panel-app --help
+
       - name: Run test suite
         run: pytest -q
