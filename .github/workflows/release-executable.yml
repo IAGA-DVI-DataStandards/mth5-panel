@@ -55,6 +55,16 @@ jobs:
             --collect-all mth5 \
             --collect-all mt_metadata \
             --collect-all obspy \
+            --exclude-module panel.tests \
+            --exclude-module holoviews.tests \
+            --exclude-module hvplot.tests \
+            --exclude-module datashader.tests \
+            --exclude-module datashader.tests.benchmarks \
+            --exclude-module bokeh.sampledata \
+            --exclude-module bokeh.sphinxext \
+            --exclude-module matplotlib.tests \
+            --exclude-module scipy.tests \
+            --exclude-module numpy.tests \
             mth5_panel/serve_mth5_panel_app.py
 
       - name: Smoke test executable (Linux/macOS)
