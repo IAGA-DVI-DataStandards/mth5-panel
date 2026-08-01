@@ -60,12 +60,24 @@ Contributions are welcome.
 
 You can run the Panel apps in multiple ways.
 
-### 1) Command line
+### 1) Installed launcher
+
+Install the package, then run the app launcher:
+
+```bash
+pip install -e .
+mth5-panel-app --show
+```
+
+This launches the unified MTH5 create/view application through the installable
+script and avoids using a generic `serve` command name.
+
+### 2) Command line
 
 Use `panel serve` directly against an app script:
 
 ```bash
-panel serve mth5_panel/mth5_viewer.py --show
+panel serve mth5_panel/mth5_panel_app.py --show
 ```
 
 You can also serve other app entry files in this package, for example:
@@ -74,7 +86,7 @@ You can also serve other app entry files in this package, for example:
 panel serve mth5_panel/make_mth5.py --show
 ```
 
-### 2) Jupyter notebook
+### 3) Jupyter notebook
 
 In a notebook, enable the Panel extension and render a view inline:
 
@@ -87,14 +99,14 @@ pn.extension()
 Then import or build a Panel object from one of the app modules and display it
 in a notebook cell.
 
-### 3) VS Code
+### 4) VS Code
 
 1. Open this repository in VS Code.
 2. Open a terminal in the project root.
-3. Run a `panel serve` command, for example:
+3. Run one of the launcher commands, for example:
 
 ```bash
-panel serve mth5_panel/mth5_viewer.py --autoreload --show
+panel serve mth5_panel/mth5_panel_app.py --autoreload --show
 ```
 
 VS Code will show the local server URL in the terminal output; open it in your

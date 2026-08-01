@@ -40,6 +40,9 @@ test = [
     "pytest>=8",
 ]
 
+[project.scripts]
+mth5-panel-app = "mth5_panel.serve_mth5_panel_app:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 
