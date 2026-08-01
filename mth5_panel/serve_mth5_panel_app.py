@@ -5,7 +5,10 @@ from typing import Sequence
 
 import panel as pn
 
-from .mth5_panel_app import build_app
+try:
+    from mth5_panel.mth5_panel_app import build_app
+except ImportError:  # pragma: no cover - supports direct script execution
+    from .mth5_panel_app import build_app
 
 
 def _build_parser() -> argparse.ArgumentParser:
