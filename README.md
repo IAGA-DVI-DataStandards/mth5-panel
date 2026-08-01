@@ -16,6 +16,9 @@ MTH5 workflows. The applications help you:
 
 Install from source with either `pip` or `uv`.
 
+Standalone executables are published on GitHub Releases for users who do not
+want to install Python. Those builds are the secondary distribution path.
+
 ### pip
 
 ```bash
