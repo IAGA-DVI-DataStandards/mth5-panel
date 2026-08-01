@@ -168,13 +168,14 @@ def build_app():
     return app.view()
 
 
-try:
-    panel_app = build_app()
-except ImportError as error:  # pragma: no cover - optional-dependency runtime guard
-    panel_app = pn.pane.Alert(
-        f"Unable to initialize master panel app: {error}",
-        alert_type="danger",
-        sizing_mode="stretch_width",
-    )
+if __name__.startswith("bokeh_app") or __name__ == "__main__":
+    try:
+        panel_app = build_app()
+    except ImportError as error:  # pragma: no cover - optional-dependency runtime guard
+        panel_app = pn.pane.Alert(
+            f"Unable to initialize master panel app: {error}",
+            alert_type="danger",
+            sizing_mode="stretch_width",
+        )
 
-panel_app.servable()
+    panel_app.servable()

@@ -1,37 +1,31 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from mth5_panel import serve_mth5_panel_app as serve
 
 
-def test_main_builds_panel_serve_command(monkeypatch):
+def test_main_serves_panel_app(monkeypatch):
     calls: dict[str, object] = {}
 
-    def _fake_run(command, check=False):
-        calls["command"] = command
-        calls["check"] = check
+    sentinel_app = object()
 
-        class _Result:
-            returncode = 0
+    def _fake_build_app():
+        return sentinel_app
 
-        return _Result()
+    def _fake_serve(panels, **kwargs):
+        calls["panels"] = panels
+        calls["kwargs"] = kwargs
 
-    monkeypatch.setattr(serve.subprocess, "run", _fake_run)
+        return None
 
-    exit_code = serve.main(["--port", "5007"])
+    monkeypatch.setattr(serve, "build_app", _fake_build_app)
+    monkeypatch.setattr(serve.pn, "serve", _fake_serve)
 
-    expected_app = str(Path(serve.__file__).resolve().with_name("mth5_panel_app.py"))
+    exit_code = serve.main(["--port", "5007", "--title", "Custom MTH5 Panel"])
+
     assert exit_code == 0
-    assert calls["check"] is False
-    assert calls["command"] == [
-        sys.executable,
-        "-m",
-        "panel",
-        "serve",
-        expected_app,
-        "--show",
-        "--port",
-        "5007",
-    ]
+    assert calls["panels"] == {"Custom MTH5 Panel": sentinel_app}
+    assert calls["kwargs"]["port"] == 5007
+    assert calls["kwargs"]["show"] is True
+    assert calls["kwargs"]["title"] == "Custom MTH5 Panel"
+    assert calls["kwargs"]["threaded"] is False
+    assert calls["kwargs"]["admin"] is False

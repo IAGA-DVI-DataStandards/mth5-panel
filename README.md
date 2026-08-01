@@ -1,6 +1,6 @@
 # mth5-panel
 
-- **Current Version**: 0.0.3
+- **Current Version**: 0.0.4
 - **Home URL**: [IAGA-DVI-DataStandards/mth5-panel: Panel application to build and view MTH5 files](https://github.com/IAGA-DVI-DataStandards/mth5-panel)
 
 Includes `panel` applications for building and viewing a MTH5 file.
@@ -15,6 +15,8 @@ MTH5 workflows. The applications help you:
 ## Installation
 
 Install from source with either `pip` or `uv`.
+
+Standalone executables are published on GitHub Releases for users who do not want to install Python. Those builds will be available at [Releases](https://github.com/IAGA-DVI-DataStandards/mth5-panel/releases).
 
 ### pip
 

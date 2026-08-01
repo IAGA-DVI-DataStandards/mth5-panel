@@ -1,23 +1,45 @@
 from __future__ import annotations
 
-import subprocess
-import sys
-from pathlib import Path
+import argparse
 from typing import Sequence
 
+import panel as pn
 
-def _build_command(extra_args: Sequence[str] | None = None) -> list[str]:
-    app_path = Path(__file__).resolve().with_name("mth5_panel_app.py")
-    command = [sys.executable, "-m", "panel", "serve", str(app_path), "--show"]
-    if extra_args:
-        command.extend(extra_args)
-    return command
+from .mth5_panel_app import build_app
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="mth5-panel-app",
+        description="Launch the MTH5 Panel application.",
+    )
+    parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--address", default=None)
+    parser.add_argument("--title", default="MTH5 Panel")
+    parser.add_argument("--threaded", action="store_true")
+    parser.add_argument("--admin", action="store_true")
+    parser.add_argument("--show", action=argparse.BooleanOptionalAction, default=True)
+    return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    command = _build_command(sys.argv[1:] if argv is None else argv)
-    completed = subprocess.run(command, check=False)
-    return completed.returncode
+    parser = _build_parser()
+    args = parser.parse_args(list(argv) if argv is not None else None)
+
+    try:
+        pn.serve(
+            {args.title: build_app()},
+            port=args.port,
+            address=args.address,
+            show=args.show,
+            title=args.title,
+            threaded=args.threaded,
+            admin=args.admin,
+        )
+    except KeyboardInterrupt:  # pragma: no cover - interactive shutdown path
+        return 130
+
+    return 0
 
 
 if __name__ == "__main__":
