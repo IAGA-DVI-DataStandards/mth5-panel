@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from typing import Sequence
 
 import panel as pn
-
-from .mth5_panel_app import build_app
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -22,13 +21,38 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _ensure_obspy_release_version() -> None:
+    """Create an ObsPy release-version file for frozen-runtime imports."""
+
+    release_dir = Path.cwd() / "obspy"
+    release_file = release_dir / "RELEASE-VERSION"
+
+    try:
+        release_dir.mkdir(parents=True, exist_ok=True)
+        if not release_file.exists():
+            release_file.write_text("0.0.0+archive\n", encoding="ascii")
+    except OSError:
+        # Non-fatal: if this fails, normal import error handling will still apply.
+        pass
+
+
+def _build_panel_app():
+    _ensure_obspy_release_version()
+    try:
+        from mth5_panel.mth5_panel_app import build_app
+    except ImportError:  # pragma: no cover - supports direct script execution
+        from .mth5_panel_app import build_app
+
+    return build_app()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     try:
         pn.serve(
-            {args.title: build_app()},
+            {args.title: _build_panel_app()},
             port=args.port,
             address=args.address,
             show=args.show,

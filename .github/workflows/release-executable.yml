@@ -45,6 +45,21 @@ jobs:
         shell: bash
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --name mth5-panel-app \
+            --exclude-module panel.tests \
+            --exclude-module bokeh.sampledata \
+            --exclude-module bokeh.sphinxext \
+            --exclude-module bokeh._testing \
+            --exclude-module holoviews.tests \
+            --exclude-module hvplot.tests \
+            --exclude-module datashader.tests \
+            --exclude-module colorcet.tests \
+            --exclude-module mth5.tests \
+            --exclude-module mt_metadata.tests \
+            --exclude-module obspy.signal.tests \
+            --exclude-module obspy.imaging.tests \
+            --exclude-module obspy.io.nordic.tests \
+            --exclude-module matplotlib.tests \
+            --exclude-module PIL.tests \
             --collect-all mth5_panel \
             --collect-all panel \
             --collect-all bokeh \

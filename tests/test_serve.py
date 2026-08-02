@@ -8,7 +8,7 @@ def test_main_serves_panel_app(monkeypatch):
 
     sentinel_app = object()
 
-    def _fake_build_app():
+    def _fake_build_panel_app():
         return sentinel_app
 
     def _fake_serve(panels, **kwargs):
@@ -17,7 +17,7 @@ def test_main_serves_panel_app(monkeypatch):
 
         return None
 
-    monkeypatch.setattr(serve, "build_app", _fake_build_app)
+    monkeypatch.setattr(serve, "_build_panel_app", _fake_build_panel_app)
     monkeypatch.setattr(serve.pn, "serve", _fake_serve)
 
     exit_code = serve.main(["--port", "5007", "--title", "Custom MTH5 Panel"])
