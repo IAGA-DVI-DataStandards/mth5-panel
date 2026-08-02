@@ -15,6 +15,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--address", default=None)
     parser.add_argument("--title", default="MTH5 Panel")
+    parser.add_argument(
+        "--route",
+        default="/",
+        help="URL route to serve the app on (for example: / or /mth5-panel).",
+    )
     parser.add_argument("--threaded", action="store_true")
     parser.add_argument("--admin", action="store_true")
     parser.add_argument("--show", action=argparse.BooleanOptionalAction, default=True)
@@ -60,8 +65,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     try:
+        app = _build_panel_app()
         pn.serve(
-            {args.title: _build_panel_app()},
+            {args.route: app},
             port=args.port,
             address=args.address,
             show=args.show,
