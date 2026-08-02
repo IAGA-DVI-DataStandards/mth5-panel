@@ -23,9 +23,32 @@ def test_main_serves_panel_app(monkeypatch):
     exit_code = serve.main(["--port", "5007", "--title", "Custom MTH5 Panel"])
 
     assert exit_code == 0
-    assert calls["panels"] == {"Custom MTH5 Panel": sentinel_app}
+    assert calls["panels"] == {"/": sentinel_app}
     assert calls["kwargs"]["port"] == 5007
     assert calls["kwargs"]["show"] is True
     assert calls["kwargs"]["title"] == "Custom MTH5 Panel"
     assert calls["kwargs"]["threaded"] is False
     assert calls["kwargs"]["admin"] is False
+
+
+def test_main_serves_panel_app_custom_route(monkeypatch):
+    calls: dict[str, object] = {}
+
+    sentinel_app = object()
+
+    def _fake_build_panel_app():
+        return sentinel_app
+
+    def _fake_serve(panels, **kwargs):
+        calls["panels"] = panels
+        calls["kwargs"] = kwargs
+
+        return None
+
+    monkeypatch.setattr(serve, "_build_panel_app", _fake_build_panel_app)
+    monkeypatch.setattr(serve.pn, "serve", _fake_serve)
+
+    exit_code = serve.main(["--route", "/mth5-panel"])
+
+    assert exit_code == 0
+    assert calls["panels"] == {"/mth5-panel": sentinel_app}
