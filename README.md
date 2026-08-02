@@ -16,7 +16,7 @@ MTH5 workflows. The applications help you:
 
 Install from source with either `pip` or `uv`.
 
-Standalone executables are published on GitHub Releases for users who do not want to install Python. Those builds will be available at [Releases](https://github.com/IAGA-DVI-DataStandards/mth5-panel/releases).  Download the build appropriate to your OS and run.
+Standalone executables are published on GitHub Releases for users who do not want to install Python. Those builds will be available at [Releases](https://github.com/IAGA-DVI-DataStandards/mth5-panel/releases).
 
 ### pip
 
@@ -68,8 +68,6 @@ pip install mth5-panel
 
 You can run the Panel apps in multiple ways.  First install the package:
 
-
-
 ### 1) Script
 
 Install the package, then run the app launcher:
@@ -112,5 +110,17 @@ panel serve mth5_panel/mth5_panel_app.py --autoreload --show
 
 VS Code will show the local server URL in the terminal output; open it in your browser to use the application.
 
+## How to run manual release
 
+This repository supports manual releases through the **Release Standalone Executable** GitHub Actions workflow.
 
+1. Go to **Actions** → **Release Standalone Executable**.
+2. Click **Run workflow**.
+3. In the `tag` input, enter an existing tag that starts with `v` (for example, `v0.0.5`).
+4. Run the workflow.
+
+### Notes
+
+- The workflow fails fast if `tag` is empty.
+- The workflow fails fast if the tag does not exist in the remote repository.
+- Tag-push releases (`push` to `v*`) still work as before.
