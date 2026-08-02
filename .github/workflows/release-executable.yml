@@ -70,6 +70,7 @@ jobs:
             --collect-all mth5 \
             --collect-all mt_metadata \
             --collect-all obspy \
+            --copy-metadata pandas \
             --exclude-module panel.tests \
             --exclude-module holoviews.tests \
             --exclude-module hvplot.tests \
@@ -86,13 +87,13 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           chmod +x dist/${{ matrix.dist_name }}
-          ./dist/${{ matrix.dist_name }} --help
+          ./dist/${{ matrix.dist_name }} --self-check
 
       - name: Smoke test executable (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          .\dist\${{ matrix.dist_name }} --help
+          .\dist\${{ matrix.dist_name }} --self-check
 
       - name: Package Windows executable
         if: runner.os == 'Windows'

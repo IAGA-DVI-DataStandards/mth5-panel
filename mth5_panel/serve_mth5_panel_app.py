@@ -18,6 +18,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--threaded", action="store_true")
     parser.add_argument("--admin", action="store_true")
     parser.add_argument("--show", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--self-check",
+        action="store_true",
+        help="Build the application and exit without starting the Panel server.",
+    )
     return parser
 
 
@@ -49,6 +54,10 @@ def _build_panel_app():
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
+
+    if args.self_check:
+        _build_panel_app()
+        return 0
 
     try:
         pn.serve(
