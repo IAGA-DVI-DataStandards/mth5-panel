@@ -1,6 +1,6 @@
 # mth5-panel
 
-- **Current Version**: 0.0.5
+- **Current Version**: 0.0.6
 - **Home URL**: [IAGA-DVI-DataStandards/mth5-panel: Panel application to build and view MTH5 files](https://github.com/IAGA-DVI-DataStandards/mth5-panel)
 
 Includes `panel` applications for building and viewing a MTH5 file.
@@ -116,7 +116,7 @@ This repository supports manual releases through the **Release Standalone Execut
 
 1. Go to **Actions** → **Release Standalone Executable**.
 2. Click **Run workflow**.
-3. In the `tag` input, enter an existing tag that starts with `v` (for example, `v0.0.5`).
+3. In the `tag` input, enter an existing tag that starts with `v` (for example, `v0.0.6`).
 4. Run the workflow.
 
 ### Notes
