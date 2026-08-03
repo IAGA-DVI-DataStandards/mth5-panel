@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mth5-panel"
-version = "0.0.7"
+version = "0.0.8"
 authors = [
     { name = "MTH5 development team" },
 ]
@@ -59,7 +59,7 @@ use_parentheses = true
 ensure_newline_before_comments = true
 
 [tool.bumpversion]
-current_version = "0.0.7"
+current_version = "0.0.8"
 commit = true
 tag = true
 

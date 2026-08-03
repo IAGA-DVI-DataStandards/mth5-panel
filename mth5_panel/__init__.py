@@ -3,7 +3,7 @@ from .mth5_viewer import MTH5Viewer
 from .ts_data_store import MTDataStore
 from .ts_renderers import LODRenderer
 
-__version__ = "0.0.7"
+__version__ = "0.0.8"
 
 __all__ = [
     "MakeMTH5PanelApp",
