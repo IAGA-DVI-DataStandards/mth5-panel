@@ -278,10 +278,18 @@ class MTH5Viewer(param.Parameterized):
         pn.state.add_periodic_callback(update_resources, period=1000)
 
     def _on_files_changed(self, event):
-        if not event.new:
+        self.load_files(event.new)
+
+    def load_files(self, file_paths):
+        """Load one or more MTH5 files into the viewer run table."""
+
+        if not file_paths:
             return
-        run_summary = self.store.load_summaries(event.new)[1]
+
+        paths = [str(pathlib.Path(path)) for path in file_paths]
+        run_summary = self.store.load_summaries(paths)[1]
         self.runs_table.value = run_summary[RUN_SUMMARY_DISPLAY_COLUMNS]
+        self.selected_runs = {}
         self.tabs.active = 1
 
     def _on_run_selection(self, event):

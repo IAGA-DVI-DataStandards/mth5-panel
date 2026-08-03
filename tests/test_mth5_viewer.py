@@ -89,3 +89,22 @@ def test_viewer_v2_refresh_plot_from_channel_arrays():
 
     assert viewer.plot_pane.object is not None
     assert viewer.plot_refresh_elapsed.value >= 0.0
+
+
+def test_viewer_v2_load_files_populates_runs_table(monkeypatch, tmp_path):
+    viewer = MTH5Viewer(use_template=False)
+    input_file = tmp_path / "input.h5"
+    input_file.write_text("placeholder")
+
+    calls: dict[str, object] = {}
+
+    def _fake_load_summaries(paths):
+        calls["paths"] = paths
+        return (None, viewer.store.run_summary.copy())
+
+    monkeypatch.setattr(viewer.store, "load_summaries", _fake_load_summaries)
+
+    viewer.load_files([str(input_file)])
+
+    assert calls["paths"] == [str(input_file)]
+    assert viewer.tabs.active == 1
